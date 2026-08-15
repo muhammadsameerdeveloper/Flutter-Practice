@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:practiceapp/ludoBorder.dart';
+import 'package:practiceapp/periodictable.dart';
 
 void main() {
   runApp(const MyApp());
@@ -10,6 +10,9 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(debugShowCheckedModeBanner: false, home: Ludoborder());
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: Scaffold(body: PeriodicTable()),
+    );
   }
 }
