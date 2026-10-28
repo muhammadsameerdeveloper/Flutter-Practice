@@ -3,6 +3,7 @@ import 'package:practiceapp/counter_view.dart';
 import 'package:practiceapp/expandedview.dart';
 import 'package:practiceapp/login_view.dart';
 import 'package:practiceapp/periodictable.dart';
+import 'package:practiceapp/stack.dart';
 
 void main() {
   runApp(const MyApp());
@@ -13,6 +14,6 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(debugShowCheckedModeBanner: false, home: ExpandedView());
+    return MaterialApp(debugShowCheckedModeBanner: false, home: StackView());
   }
 }
