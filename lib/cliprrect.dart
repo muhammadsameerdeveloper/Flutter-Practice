@@ -8,48 +8,90 @@ class CliprrectView extends StatefulWidget {
 }
 
 class _CliprrectViewState extends State<CliprrectView> {
+  int selectedIndex = 0;
   bool isFavorite = false;
+  bool showDetails = false;
+
+  final List<Map<String, dynamic>> places = [
+    {
+      "name": "Beautiful Mountains",
+      "location": "Switzerland",
+      "rating": "4.9",
+      "price": "\$250",
+      "reviews": "320 Reviews",
+      "image": "assets/images/schwarzwaldandi-cat-5665915.jpg",
+    },
+    {
+      "name": "Amazing Nature",
+      "location": "Germany",
+      "rating": "4.8",
+      "price": "\$180",
+      "reviews": "250 Reviews",
+      "image": "assets/images/schwarzwaldandi-cat-5665915.jpg",
+    },
+  ];
 
   @override
   Widget build(BuildContext context) {
+    final place = places[selectedIndex];
+
     return Scaffold(
-      backgroundColor: Colors.grey.shade100,
+      backgroundColor: const Color(0xffF2F4F8),
 
       appBar: AppBar(
-        title: const Text("Advanced ClipRRect"),
-        backgroundColor: Colors.blue,
-        foregroundColor: Colors.white,
+        title: const Text(
+          "Explore Places",
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        centerTitle: true,
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black,
+        elevation: 0,
       ),
 
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
 
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(30),
+        children: [
+          // Heading
+          const Text(
+            "Discover",
+            style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold),
+          ),
 
-            child: SizedBox(
-              height: 450,
-              width: double.infinity,
+          const SizedBox(height: 5),
+
+          const Text(
+            "Explore beautiful places around the world",
+            style: TextStyle(color: Colors.grey),
+          ),
+
+          const SizedBox(height: 25),
+
+          // Main Card
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 500),
+            height: showDetails ? 540 : 490,
+            width: double.infinity,
+
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(30),
 
               child: Stack(
                 fit: StackFit.expand,
 
                 children: [
                   // Background Image
-                  Image.asset(
-                    "assets/images/schwarzwaldandi-cat-5665915.jpg",
-                    fit: BoxFit.cover,
-                  ),
+                  Image.asset(place["image"], fit: BoxFit.cover),
 
-                  // Gradient
+                  // Gradient Overlay
                   Container(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
                         colors: [
-                          Colors.black.withOpacity(0.4),
+                          Colors.black.withOpacity(0.5),
                           Colors.transparent,
                           Colors.black.withOpacity(0.9),
                         ],
@@ -57,38 +99,44 @@ class _CliprrectViewState extends State<CliprrectView> {
                     ),
                   ),
 
-                  // Top Location Badge
+                  // Top Location
                   Positioned(
                     top: 20,
                     left: 20,
 
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 15,
-                        vertical: 10,
-                      ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(20),
 
-                      decoration: BoxDecoration(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 15,
+                          vertical: 10,
+                        ),
                         color: Colors.white.withOpacity(0.8),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
 
-                      child: const Row(
-                        children: [
-                          Icon(Icons.location_on, color: Colors.red, size: 18),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.location_on,
+                              color: Colors.red,
+                              size: 18,
+                            ),
 
-                          SizedBox(width: 5),
+                            const SizedBox(width: 5),
 
-                          Text(
-                            "Germany",
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                        ],
+                            Text(
+                              place["location"],
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
 
-                  // Favorite Button
+                  // Favorite Animation
                   Positioned(
                     top: 15,
                     right: 15,
@@ -100,13 +148,25 @@ class _CliprrectViewState extends State<CliprrectView> {
                         });
                       },
 
-                      child: CircleAvatar(
-                        radius: 23,
-                        backgroundColor: Colors.white,
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 300),
+                        height: 48,
+                        width: 48,
+
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.2),
+                              blurRadius: 10,
+                            ),
+                          ],
+                        ),
 
                         child: Icon(
                           isFavorite ? Icons.favorite : Icons.favorite_border,
-                          color: Colors.red,
+                          color: isFavorite ? Colors.red : Colors.black,
                           size: 25,
                         ),
                       ),
@@ -115,19 +175,66 @@ class _CliprrectViewState extends State<CliprrectView> {
 
                   // Bottom Content
                   Positioned(
-                    bottom: 20,
                     left: 20,
                     right: 20,
+                    bottom: 20,
 
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
 
                       children: [
-                        const Text(
-                          "Beautiful Cat",
-                          style: TextStyle(
+                        // Rating
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 7,
+                          ),
+
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                Icons.star,
+                                color: Colors.amber,
+                                size: 18,
+                              ),
+
+                              const SizedBox(width: 5),
+
+                              Text(
+                                place["rating"],
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+
+                              const SizedBox(width: 5),
+
+                              Text(
+                                place["reviews"],
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 15),
+
+                        // Title
+                        Text(
+                          place["name"],
+                          style: const TextStyle(
                             color: Colors.white,
-                            fontSize: 28,
+                            fontSize: 27,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
@@ -135,62 +242,103 @@ class _CliprrectViewState extends State<CliprrectView> {
                         const SizedBox(height: 8),
 
                         const Text(
-                          "Discover the beauty of nature "
-                          "and amazing forest views.",
+                          "Experience the beauty of nature "
+                          "and explore amazing destinations.",
                           style: TextStyle(color: Colors.white70, fontSize: 14),
                         ),
 
                         const SizedBox(height: 15),
 
-                        // Rating Row
+                        // Price and Explore
                         Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+
                           children: [
-                            const Icon(
-                              Icons.star,
-                              color: Colors.amber,
-                              size: 20,
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+
+                              children: [
+                                const Text(
+                                  "Starting from",
+                                  style: TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 12,
+                                  ),
+                                ),
+
+                                Text(
+                                  place["price"],
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
                             ),
 
-                            const SizedBox(width: 5),
-
-                            const Text(
-                              "4.9",
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-
-                            const SizedBox(width: 5),
-
-                            const Text(
-                              "(250 Reviews)",
-                              style: TextStyle(color: Colors.white70),
-                            ),
-
-                            const Spacer(),
-
-                            // Explore Button
                             ElevatedButton(
+                              onPressed: () {
+                                setState(() {
+                                  showDetails = !showDetails;
+                                });
+                              },
+
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.white,
                                 foregroundColor: Colors.black,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 20,
+                                  vertical: 13,
+                                ),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(20),
                                 ),
                               ),
 
-                              onPressed: () {},
-
-                              child: const Row(
+                              child: Row(
                                 children: [
-                                  Text("Explore"),
-                                  SizedBox(width: 5),
-                                  Icon(Icons.arrow_forward, size: 18),
+                                  Text(showDetails ? "Show Less" : "Explore"),
+
+                                  const SizedBox(width: 5),
+
+                                  const Icon(Icons.arrow_forward, size: 18),
                                 ],
                               ),
                             ),
                           ],
+                        ),
+
+                        // Animated Extra Details
+                        AnimatedCrossFade(
+                          duration: const Duration(milliseconds: 400),
+
+                          firstChild: const SizedBox(width: double.infinity),
+
+                          secondChild: Container(
+                            margin: const EdgeInsets.only(top: 15),
+                            padding: const EdgeInsets.all(12),
+
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(15),
+                            ),
+
+                            child: const Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceAround,
+
+                              children: [
+                                Icon(Icons.wifi, color: Colors.white),
+                                Icon(Icons.pool, color: Colors.white),
+                                Icon(Icons.restaurant, color: Colors.white),
+                                Icon(Icons.hotel, color: Colors.white),
+                              ],
+                            ),
+                          ),
+
+                          crossFadeState: showDetails
+                              ? CrossFadeState.showSecond
+                              : CrossFadeState.showFirst,
                         ),
                       ],
                     ),
@@ -199,7 +347,62 @@ class _CliprrectViewState extends State<CliprrectView> {
               ),
             ),
           ),
-        ),
+
+          const SizedBox(height: 25),
+
+          // Choose Destination
+          const Text(
+            "Popular Destinations",
+            style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold),
+          ),
+
+          const SizedBox(height: 15),
+
+          // Destination Selector
+          SizedBox(
+            height: 55,
+
+            child: Row(
+              children: List.generate(places.length, (index) {
+                bool isSelected = selectedIndex == index;
+
+                return Expanded(
+                  child: GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        selectedIndex = index;
+                        isFavorite = false;
+                        showDetails = false;
+                      });
+                    },
+
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 300),
+                      margin: const EdgeInsets.only(right: 10),
+
+                      decoration: BoxDecoration(
+                        color: isSelected ? Colors.blue : Colors.white,
+
+                        borderRadius: BorderRadius.circular(15),
+                      ),
+
+                      child: Center(
+                        child: Text(
+                          places[index]["location"],
+
+                          style: TextStyle(
+                            color: isSelected ? Colors.white : Colors.black,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }),
+            ),
+          ),
+        ],
       ),
     );
   }
