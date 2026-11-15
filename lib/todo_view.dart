@@ -1,22 +1,5 @@
 import 'package:flutter/material.dart';
 
-void main() {
-  runApp(const MyApp());
-}
-
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(useMaterial3: true, colorSchemeSeed: Colors.blue),
-      home: const TodoView(),
-    );
-  }
-}
-
 class TodoView extends StatefulWidget {
   const TodoView({super.key});
 
@@ -31,55 +14,220 @@ class _TodoViewState extends State<TodoView> {
   List<Map<String, dynamic>> tasks = [];
 
   String selectedFilter = "All";
+  String selectedPriority = "Medium";
+  String selectedCategory = "General";
+  String selectedSort = "Newest";
 
+  // Add Task
   void addTask() {
-    if (controller.text.trim().isEmpty) return;
+    if (controller.text.trim().isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("Please enter a task!")));
+      return;
+    }
 
     setState(() {
       tasks.add({
+        "id": DateTime.now().microsecondsSinceEpoch,
         "title": controller.text.trim(),
         "completed": false,
         "date": DateTime.now(),
+        "priority": selectedPriority,
+        "category": selectedCategory,
       });
 
       controller.clear();
     });
+
+    FocusScope.of(context).unfocus();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text("Task Added Successfully"),
+        duration: Duration(seconds: 1),
+      ),
+    );
   }
 
-  void editTask(int index) {
+  // Edit Task
+  Future<void> editTask(int index) async {
     TextEditingController editController = TextEditingController(
       text: tasks[index]["title"],
     );
+
+    String editPriority = tasks[index]["priority"];
+    String editCategory = tasks[index]["category"];
+
+    await showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text(
+                "Edit Task",
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: editController,
+                      decoration: const InputDecoration(
+                        hintText: "Enter task name",
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.edit),
+                      ),
+                    ),
+
+                    const SizedBox(height: 15),
+
+                    DropdownButtonFormField<String>(
+                      value: editPriority,
+                      decoration: const InputDecoration(
+                        labelText: "Priority",
+                        border: OutlineInputBorder(),
+                      ),
+                      items: ["Low", "Medium", "High"].map((value) {
+                        return DropdownMenuItem(
+                          value: value,
+                          child: Text(value),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        setDialogState(() {
+                          editPriority = value!;
+                        });
+                      },
+                    ),
+
+                    const SizedBox(height: 15),
+
+                    DropdownButtonFormField<String>(
+                      value: editCategory,
+                      decoration: const InputDecoration(
+                        labelText: "Category",
+                        border: OutlineInputBorder(),
+                      ),
+                      items: ["General", "Work", "Personal", "Study"].map((
+                        value,
+                      ) {
+                        return DropdownMenuItem(
+                          value: value,
+                          child: Text(value),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        setDialogState(() {
+                          editCategory = value!;
+                        });
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text("Cancel"),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    if (editController.text.trim().isEmpty) return;
+
+                    setState(() {
+                      tasks[index]["title"] = editController.text.trim();
+                      tasks[index]["priority"] = editPriority;
+                      tasks[index]["category"] = editCategory;
+                    });
+
+                    Navigator.pop(context);
+                  },
+                  child: const Text("Update"),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    editController.dispose();
+  }
+
+  // Delete Task with Undo
+  void deleteTask(int index) {
+    Map<String, dynamic> deletedTask = tasks[index];
+
+    setState(() {
+      tasks.removeAt(index);
+    });
+
+    ScaffoldMessenger.of(context).clearSnackBars();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text("Task Deleted"),
+        action: SnackBarAction(
+          label: "UNDO",
+          onPressed: () {
+            setState(() {
+              tasks.insert(index.clamp(0, tasks.length), deletedTask);
+            });
+          },
+        ),
+      ),
+    );
+  }
+
+  // Complete / Incomplete Task
+  void toggleTask(int index, bool value) {
+    setState(() {
+      tasks[index]["completed"] = value;
+    });
+  }
+
+  // Clear Completed Tasks
+  void clearCompleted() {
+    setState(() {
+      tasks.removeWhere((task) => task["completed"] == true);
+    });
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text("Completed Tasks Cleared")));
+  }
+
+  // Clear All Tasks
+  void clearAllTasks() {
+    if (tasks.isEmpty) return;
 
     showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text("Edit Task"),
-          content: TextField(
-            controller: editController,
-            decoration: const InputDecoration(
-              hintText: "Enter new task",
-              border: OutlineInputBorder(),
-            ),
-          ),
+          title: const Text("Delete All Tasks?"),
+          content: const Text("Are you sure you want to delete all tasks?"),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
               child: const Text("Cancel"),
             ),
             ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+              ),
               onPressed: () {
-                if (editController.text.trim().isNotEmpty) {
-                  setState(() {
-                    tasks[index]["title"] = editController.text.trim();
-                  });
-                }
+                setState(() {
+                  tasks.clear();
+                });
 
                 Navigator.pop(context);
-                editController.dispose();
               },
-              child: const Text("Update"),
+              child: const Text("Delete All"),
             ),
           ],
         );
@@ -87,32 +235,11 @@ class _TodoViewState extends State<TodoView> {
     );
   }
 
-  void deleteTask(int index) {
-    setState(() {
-      tasks.removeAt(index);
-    });
-
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text("Task Deleted Successfully")));
-  }
-
-  void toggleTask(int index, bool value) {
-    setState(() {
-      tasks[index]["completed"] = value;
-    });
-  }
-
-  void clearCompleted() {
-    setState(() {
-      tasks.removeWhere((task) => task["completed"] == true);
-    });
-  }
-
+  // Filter and Search Tasks
   List<Map<String, dynamic>> get filteredTasks {
     String search = searchController.text.toLowerCase();
 
-    return tasks.where((task) {
+    List<Map<String, dynamic>> result = tasks.where((task) {
       bool matchesSearch = task["title"].toString().toLowerCase().contains(
         search,
       );
@@ -124,6 +251,25 @@ class _TodoViewState extends State<TodoView> {
 
       return matchesSearch && matchesFilter;
     }).toList();
+
+    // Sorting
+    if (selectedSort == "Newest") {
+      result.sort((a, b) => b["date"].compareTo(a["date"]));
+    } else if (selectedSort == "Oldest") {
+      result.sort((a, b) => a["date"].compareTo(b["date"]));
+    } else if (selectedSort == "Priority") {
+      result.sort((a, b) {
+        int getPriority(String value) {
+          if (value == "High") return 1;
+          if (value == "Medium") return 2;
+          return 3;
+        }
+
+        return getPriority(a["priority"]).compareTo(getPriority(b["priority"]));
+      });
+    }
+
+    return result;
   }
 
   int get totalTasks => tasks.length;
@@ -132,6 +278,15 @@ class _TodoViewState extends State<TodoView> {
       tasks.where((task) => task["completed"] == true).length;
 
   int get pendingTasks => totalTasks - completedTasks;
+
+  double get progress => totalTasks == 0 ? 0 : completedTasks / totalTasks;
+
+  // Priority Color
+  Color getPriorityColor(String priority) {
+    if (priority == "High") return Colors.red;
+    if (priority == "Medium") return Colors.orange;
+    return Colors.green;
+  }
 
   @override
   void dispose() {
@@ -142,8 +297,6 @@ class _TodoViewState extends State<TodoView> {
 
   @override
   Widget build(BuildContext context) {
-    double progress = totalTasks == 0 ? 0 : completedTasks / totalTasks;
-
     return Scaffold(
       backgroundColor: Colors.grey.shade100,
 
@@ -155,6 +308,29 @@ class _TodoViewState extends State<TodoView> {
         centerTitle: true,
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
+        actions: [
+          PopupMenuButton<String>(
+            onSelected: (value) {
+              if (value == "clear") {
+                clearAllTasks();
+              }
+
+              if (value == "completed") {
+                clearCompleted();
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: "completed",
+                child: Text("Clear Completed"),
+              ),
+              const PopupMenuItem(
+                value: "clear",
+                child: Text("Delete All Tasks"),
+              ),
+            ],
+          ),
+        ],
       ),
 
       body: SafeArea(
@@ -171,7 +347,6 @@ class _TodoViewState extends State<TodoView> {
                   bottomRight: Radius.circular(30),
                 ),
               ),
-
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -259,47 +434,117 @@ class _TodoViewState extends State<TodoView> {
             // Add Task Section
             Padding(
               padding: const EdgeInsets.all(16),
-
-              child: Row(
+              child: Column(
                 children: [
-                  Expanded(
-                    child: TextField(
-                      controller: controller,
-
-                      decoration: InputDecoration(
-                        hintText: "Enter your task...",
-                        filled: true,
-                        fillColor: Colors.white,
-
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(15),
-                          borderSide: BorderSide.none,
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: controller,
+                          decoration: InputDecoration(
+                            hintText: "Enter your task...",
+                            filled: true,
+                            fillColor: Colors.white,
+                            prefixIcon: const Icon(Icons.edit_note),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(15),
+                              borderSide: BorderSide.none,
+                            ),
+                          ),
+                          onSubmitted: (value) => addTask(),
                         ),
                       ),
 
-                      onSubmitted: (value) => addTask(),
-                    ),
+                      const SizedBox(width: 10),
+
+                      SizedBox(
+                        height: 55,
+                        width: 55,
+                        child: ElevatedButton(
+                          onPressed: addTask,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.blue,
+                            foregroundColor: Colors.white,
+                            padding: EdgeInsets.zero,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(15),
+                            ),
+                          ),
+                          child: const Icon(Icons.add, size: 30),
+                        ),
+                      ),
+                    ],
                   ),
 
-                  const SizedBox(width: 10),
+                  const SizedBox(height: 12),
 
-                  SizedBox(
-                    height: 55,
-                    width: 55,
-
-                    child: ElevatedButton(
-                      onPressed: addTask,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue,
-                        foregroundColor: Colors.white,
-                        padding: EdgeInsets.zero,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(15),
+                  // Priority and Category
+                  Row(
+                    children: [
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          value: selectedPriority,
+                          decoration: InputDecoration(
+                            labelText: "Priority",
+                            filled: true,
+                            fillColor: Colors.white,
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide.none,
+                            ),
+                          ),
+                          items: ["Low", "Medium", "High"].map((value) {
+                            return DropdownMenuItem(
+                              value: value,
+                              child: Text(value),
+                            );
+                          }).toList(),
+                          onChanged: (value) {
+                            setState(() {
+                              selectedPriority = value!;
+                            });
+                          },
                         ),
                       ),
 
-                      child: const Icon(Icons.add, size: 30),
-                    ),
+                      const SizedBox(width: 10),
+
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          value: selectedCategory,
+                          decoration: InputDecoration(
+                            labelText: "Category",
+                            filled: true,
+                            fillColor: Colors.white,
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide.none,
+                            ),
+                          ),
+                          items: ["General", "Work", "Personal", "Study"].map((
+                            value,
+                          ) {
+                            return DropdownMenuItem(
+                              value: value,
+                              child: Text(value),
+                            );
+                          }).toList(),
+                          onChanged: (value) {
+                            setState(() {
+                              selectedCategory = value!;
+                            });
+                          },
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -308,20 +553,26 @@ class _TodoViewState extends State<TodoView> {
             // Search Section
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-
               child: TextField(
                 controller: searchController,
-
                 onChanged: (value) {
                   setState(() {});
                 },
-
                 decoration: InputDecoration(
                   hintText: "Search tasks...",
                   prefixIcon: const Icon(Icons.search),
+                  suffixIcon: searchController.text.isNotEmpty
+                      ? IconButton(
+                          onPressed: () {
+                            setState(() {
+                              searchController.clear();
+                            });
+                          },
+                          icon: const Icon(Icons.close),
+                        )
+                      : null,
                   filled: true,
                   fillColor: Colors.white,
-
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(15),
                     borderSide: BorderSide.none,
@@ -330,12 +581,11 @@ class _TodoViewState extends State<TodoView> {
               ),
             ),
 
-            const SizedBox(height: 15),
+            const SizedBox(height: 12),
 
             // Filter Section
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-
               child: Row(
                 children: ["All", "Pending", "Completed"].map((filter) {
                   bool selected = selectedFilter == filter;
@@ -343,26 +593,21 @@ class _TodoViewState extends State<TodoView> {
                   return Expanded(
                     child: Padding(
                       padding: const EdgeInsets.only(right: 6),
-
                       child: ElevatedButton(
                         onPressed: () {
                           setState(() {
                             selectedFilter = filter;
                           });
                         },
-
                         style: ElevatedButton.styleFrom(
                           backgroundColor: selected
                               ? Colors.blue
                               : Colors.white,
-
                           foregroundColor: selected
                               ? Colors.white
                               : Colors.black,
-
                           elevation: 0,
                         ),
-
                         child: Text(filter),
                       ),
                     ),
@@ -371,25 +616,29 @@ class _TodoViewState extends State<TodoView> {
               ),
             ),
 
-            const SizedBox(height: 10),
-
-            // Task Heading
+            // Task Heading and Sorting
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
-
                 children: [
                   const Text(
                     "My Tasks",
                     style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                   ),
 
-                  TextButton(
-                    onPressed: completedTasks == 0 ? null : clearCompleted,
-
-                    child: const Text("Clear Completed"),
+                  DropdownButton<String>(
+                    value: selectedSort,
+                    underline: const SizedBox(),
+                    icon: const Icon(Icons.sort),
+                    items: ["Newest", "Oldest", "Priority"].map((value) {
+                      return DropdownMenuItem(value: value, child: Text(value));
+                    }).toList(),
+                    onChanged: (value) {
+                      setState(() {
+                        selectedSort = value!;
+                      });
+                    },
                   ),
                 ],
               ),
@@ -401,7 +650,6 @@ class _TodoViewState extends State<TodoView> {
                   ? Center(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
-
                         children: [
                           Icon(
                             Icons.task_alt,
@@ -415,21 +663,25 @@ class _TodoViewState extends State<TodoView> {
                             tasks.isEmpty
                                 ? "No Tasks Available"
                                 : "No Matching Tasks",
-
                             style: TextStyle(
                               fontSize: 18,
                               color: Colors.grey.shade600,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
+
+                          const SizedBox(height: 5),
+
+                          Text(
+                            "Add a new task to get started!",
+                            style: TextStyle(color: Colors.grey.shade500),
+                          ),
                         ],
                       ),
                     )
                   : ListView.builder(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
-
                       itemCount: filteredTasks.length,
-
                       itemBuilder: (context, index) {
                         var task = filteredTasks[index];
 
@@ -437,84 +689,135 @@ class _TodoViewState extends State<TodoView> {
 
                         bool isCompleted = task["completed"];
 
-                        return Card(
-                          elevation: 2,
-                          margin: const EdgeInsets.only(bottom: 12),
+                        String priority = task["priority"];
 
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(15),
+                        return Dismissible(
+                          key: ValueKey(task["id"]),
+                          direction: DismissDirection.endToStart,
+                          background: Container(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            padding: const EdgeInsets.only(right: 20),
+                            alignment: Alignment.centerRight,
+                            decoration: BoxDecoration(
+                              color: Colors.red,
+                              borderRadius: BorderRadius.circular(15),
+                            ),
+                            child: const Icon(
+                              Icons.delete,
+                              color: Colors.white,
+                              size: 30,
+                            ),
                           ),
-
-                          child: ListTile(
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 5,
+                          onDismissed: (direction) {
+                            deleteTask(realIndex);
+                          },
+                          child: Card(
+                            elevation: 2,
+                            margin: const EdgeInsets.only(bottom: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(15),
                             ),
-
-                            leading: Checkbox(
-                              value: isCompleted,
-
-                              activeColor: Colors.green,
-
-                              onChanged: (value) {
-                                toggleTask(realIndex, value ?? false);
-                              },
-                            ),
-
-                            title: Text(
-                              task["title"],
-
-                              style: TextStyle(
-                                fontWeight: FontWeight.w600,
-                                fontSize: 16,
-
-                                decoration: isCompleted
-                                    ? TextDecoration.lineThrough
-                                    : TextDecoration.none,
-
-                                color: isCompleted ? Colors.grey : Colors.black,
+                            child: ListTile(
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 5,
                               ),
-                            ),
 
-                            subtitle: Text(
-                              "${task["date"].hour}:${task["date"].minute.toString().padLeft(2, '0')}",
-                              style: const TextStyle(color: Colors.grey),
-                            ),
+                              leading: Checkbox(
+                                value: isCompleted,
+                                activeColor: Colors.green,
+                                onChanged: (value) {
+                                  toggleTask(realIndex, value ?? false);
+                                },
+                              ),
 
-                            trailing: PopupMenuButton<String>(
-                              onSelected: (value) {
-                                if (value == "edit") {
-                                  editTask(realIndex);
-                                }
-
-                                if (value == "delete") {
-                                  deleteTask(realIndex);
-                                }
-                              },
-
-                              itemBuilder: (context) => [
-                                const PopupMenuItem(
-                                  value: "edit",
-                                  child: Row(
-                                    children: [
-                                      Icon(Icons.edit, color: Colors.blue),
-                                      SizedBox(width: 10),
-                                      Text("Edit"),
-                                    ],
-                                  ),
+                              title: Text(
+                                task["title"],
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 16,
+                                  decoration: isCompleted
+                                      ? TextDecoration.lineThrough
+                                      : TextDecoration.none,
+                                  color: isCompleted
+                                      ? Colors.grey
+                                      : Colors.black,
                                 ),
+                              ),
 
-                                const PopupMenuItem(
-                                  value: "delete",
-                                  child: Row(
-                                    children: [
-                                      Icon(Icons.delete, color: Colors.red),
-                                      SizedBox(width: 10),
-                                      Text("Delete"),
-                                    ],
-                                  ),
+                              subtitle: Padding(
+                                padding: const EdgeInsets.only(top: 6),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      "${task["category"]}  •  ${task["date"].hour}:${task["date"].minute.toString().padLeft(2, '0')}",
+                                      style: const TextStyle(
+                                        color: Colors.grey,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+
+                                    const SizedBox(height: 5),
+
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 9,
+                                        vertical: 4,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: getPriorityColor(
+                                          priority,
+                                        ).withValues(alpha: 0.12),
+                                        borderRadius: BorderRadius.circular(20),
+                                      ),
+                                      child: Text(
+                                        "$priority Priority",
+                                        style: TextStyle(
+                                          color: getPriorityColor(priority),
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                              ],
+                              ),
+
+                              trailing: PopupMenuButton<String>(
+                                onSelected: (value) {
+                                  if (value == "edit") {
+                                    editTask(realIndex);
+                                  }
+
+                                  if (value == "delete") {
+                                    deleteTask(realIndex);
+                                  }
+                                },
+                                itemBuilder: (context) => [
+                                  const PopupMenuItem(
+                                    value: "edit",
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.edit, color: Colors.blue),
+                                        SizedBox(width: 10),
+                                        Text("Edit"),
+                                      ],
+                                    ),
+                                  ),
+
+                                  const PopupMenuItem(
+                                    value: "delete",
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.delete, color: Colors.red),
+                                        SizedBox(width: 10),
+                                        Text("Delete"),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         );
@@ -528,17 +831,14 @@ class _TodoViewState extends State<TodoView> {
   }
 
   // Statistics Card
-
   Widget buildStatCard(String title, String value, IconData icon) {
     return Expanded(
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 15, horizontal: 5),
-
         decoration: BoxDecoration(
           color: Colors.white.withValues(alpha: 0.18),
           borderRadius: BorderRadius.circular(15),
         ),
-
         child: Column(
           children: [
             Icon(icon, color: Colors.white, size: 25),
