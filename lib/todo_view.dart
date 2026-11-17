@@ -54,7 +54,6 @@ class _TodoViewState extends State<TodoView> {
     });
 
     FocusScope.of(context).unfocus();
-
     showMessage("Task Added Successfully!");
   }
 
@@ -93,11 +92,10 @@ class _TodoViewState extends State<TodoView> {
                         ),
                       ),
                     ),
-
                     const SizedBox(height: 15),
-
                     DropdownButtonFormField<String>(
                       value: editPriority,
+                      isExpanded: true,
                       decoration: const InputDecoration(
                         labelText: "Priority",
                         border: OutlineInputBorder(),
@@ -116,11 +114,10 @@ class _TodoViewState extends State<TodoView> {
                         }
                       },
                     ),
-
                     const SizedBox(height: 15),
-
                     DropdownButtonFormField<String>(
                       value: editCategory,
+                      isExpanded: true,
                       decoration: const InputDecoration(
                         labelText: "Category",
                         border: OutlineInputBorder(),
@@ -153,7 +150,6 @@ class _TodoViewState extends State<TodoView> {
 
                     setState(() {
                       tasks[index]["title"] = editController.text.trim();
-
                       tasks[index]["priority"] = editPriority;
                       tasks[index]["category"] = editCategory;
                     });
@@ -172,7 +168,7 @@ class _TodoViewState extends State<TodoView> {
     editController.dispose();
   }
 
-  // Delete Task with Undo
+  // Delete Task With Undo
 
   void deleteTask(int index) {
     final deletedTask = tasks[index];
@@ -258,7 +254,7 @@ class _TodoViewState extends State<TodoView> {
     );
   }
 
-  // Search, Filter and Sort
+  // Search, Filter And Sort
 
   List<Map<String, dynamic>> get filteredTasks {
     String search = searchController.text.toLowerCase();
@@ -361,196 +357,226 @@ class _TodoViewState extends State<TodoView> {
           builder: (context, constraints) {
             final double screenWidth = constraints.maxWidth;
 
-            final double contentWidth = screenWidth > 900 ? 850 : screenWidth;
+            final double contentWidth = screenWidth > 1000 ? 900 : screenWidth;
+
+            final bool isSmall = screenWidth < 380;
+            final bool isMobile = screenWidth < 550;
 
             return Center(
               child: SizedBox(
                 width: contentWidth,
-                child: Column(
-                  children: [
-                    // Dashboard Header
-                    Container(
-                      width: double.infinity,
-                      padding: EdgeInsets.all(screenWidth < 400 ? 16 : 22),
-                      decoration: const BoxDecoration(
-                        color: Color(0xff2563EB),
-                        borderRadius: BorderRadius.only(
-                          bottomLeft: Radius.circular(28),
-                          bottomRight: Radius.circular(28),
+
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // DASHBOARD HEADER
+                      Container(
+                        width: double.infinity,
+                        padding: EdgeInsets.all(isSmall ? 15 : 22),
+                        decoration: const BoxDecoration(
+                          color: Color(0xff2563EB),
+                          borderRadius: BorderRadius.only(
+                            bottomLeft: Radius.circular(28),
+                            bottomRight: Radius.circular(28),
+                          ),
                         ),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            "Manage Your Tasks",
-                            style: TextStyle(
-                              fontSize: 24,
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
 
-                          const SizedBox(height: 5),
-
-                          const Text(
-                            "Stay organized and productive!",
-                            style: TextStyle(color: Colors.white70),
-                          ),
-
-                          const SizedBox(height: 20),
-
-                          // Responsive Statistics
-                          Row(
-                            children: [
-                              buildStatCard(
-                                "Total",
-                                totalTasks.toString(),
-                                Icons.list_alt,
-                              ),
-
-                              const SizedBox(width: 8),
-
-                              buildStatCard(
-                                "Completed",
-                                completedTasks.toString(),
-                                Icons.check_circle_outline,
-                              ),
-
-                              const SizedBox(width: 8),
-
-                              buildStatCard(
-                                "Pending",
-                                pendingTasks.toString(),
-                                Icons.pending_actions,
-                              ),
-                            ],
-                          ),
-
-                          const SizedBox(height: 20),
-
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              const Text(
-                                "Your Progress",
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-
-                              Text(
-                                "${(progress * 100).toInt()}%",
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
-                          ),
-
-                          const SizedBox(height: 10),
-
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(20),
-                            child: LinearProgressIndicator(
-                              value: progress,
-                              minHeight: 10,
-                              backgroundColor: Colors.white30,
-                              valueColor: const AlwaysStoppedAnimation(
-                                Colors.greenAccent,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              "Manage Your Tasks",
+                              style: TextStyle(
+                                fontSize: isSmall ? 21 : 26,
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
                               ),
                             ),
-                          ),
-                        ],
-                      ),
-                    ),
 
-                    // Add Task Section
-                    Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child: TextField(
-                                  controller: controller,
-                                  onSubmitted: (_) => addTask(),
-                                  decoration: InputDecoration(
-                                    hintText: "Enter your task...",
-                                    filled: true,
-                                    fillColor: Colors.white,
-                                    prefixIcon: const Icon(
-                                      Icons.edit_note,
-                                      color: Colors.blue,
-                                    ),
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(15),
-                                      borderSide: BorderSide.none,
-                                    ),
-                                  ),
-                                ),
-                              ),
+                            const SizedBox(height: 5),
 
-                              const SizedBox(width: 10),
+                            const Text(
+                              "Stay organized and productive!",
+                              style: TextStyle(color: Colors.white70),
+                            ),
 
-                              SizedBox(
-                                height: 55,
-                                width: 55,
-                                child: ElevatedButton(
-                                  onPressed: addTask,
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xff2563EB),
-                                    foregroundColor: Colors.white,
-                                    padding: EdgeInsets.zero,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(15),
-                                    ),
-                                  ),
-                                  child: const Icon(Icons.add, size: 30),
-                                ),
-                              ),
-                            ],
-                          ),
+                            const SizedBox(height: 20),
 
-                          const SizedBox(height: 12),
-
-                          // Responsive Dropdowns
-                          if (screenWidth < 380)
-                            Column(
-                              children: [
-                                buildDropdown(
-                                  "Priority",
-                                  selectedPriority,
-                                  priorities,
-                                  (value) {
-                                    setState(() {
-                                      selectedPriority = value!;
-                                    });
-                                  },
-                                ),
-
-                                const SizedBox(height: 10),
-
-                                buildDropdown(
-                                  "Category",
-                                  selectedCategory,
-                                  categories,
-                                  (value) {
-                                    setState(() {
-                                      selectedCategory = value!;
-                                    });
-                                  },
-                                ),
-                              ],
-                            )
-                          else
+                            // STATISTICS
                             Row(
                               children: [
-                                Expanded(
-                                  child: buildDropdown(
+                                buildStatCard(
+                                  "Total",
+                                  totalTasks.toString(),
+                                  Icons.list_alt,
+                                ),
+                                const SizedBox(width: 8),
+                                buildStatCard(
+                                  "Completed",
+                                  completedTasks.toString(),
+                                  Icons.check_circle_outline,
+                                ),
+                                const SizedBox(width: 8),
+                                buildStatCard(
+                                  "Pending",
+                                  pendingTasks.toString(),
+                                  Icons.pending_actions,
+                                ),
+                              ],
+                            ),
+
+                            const SizedBox(height: 20),
+
+                            // PROGRESS
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text(
+                                  "Your Progress",
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                Text(
+                                  "${(progress * 100).toInt()}%",
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+
+                            const SizedBox(height: 10),
+
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(20),
+                              child: LinearProgressIndicator(
+                                value: progress,
+                                minHeight: 10,
+                                backgroundColor: Colors.white30,
+                                valueColor: const AlwaysStoppedAnimation(
+                                  Colors.greenAccent,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      // ADD TASK SECTION
+                      Padding(
+                        padding: EdgeInsets.all(isSmall ? 12 : 16),
+
+                        child: Column(
+                          children: [
+                            // RESPONSIVE ADD TASK
+                            if (screenWidth < 350)
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  TextField(
+                                    controller: controller,
+                                    onSubmitted: (_) => addTask(),
+                                    decoration: InputDecoration(
+                                      hintText: "Enter your task...",
+                                      filled: true,
+                                      fillColor: Colors.white,
+                                      prefixIcon: const Icon(
+                                        Icons.edit_note,
+                                        color: Colors.blue,
+                                      ),
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(15),
+                                        borderSide: BorderSide.none,
+                                      ),
+                                    ),
+                                  ),
+
+                                  const SizedBox(height: 10),
+
+                                  SizedBox(
+                                    height: 50,
+                                    child: ElevatedButton.icon(
+                                      onPressed: addTask,
+                                      icon: const Icon(Icons.add),
+                                      label: const Text("Add Task"),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: const Color(
+                                          0xff2563EB,
+                                        ),
+                                        foregroundColor: Colors.white,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            15,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              )
+                            else
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: TextField(
+                                      controller: controller,
+                                      onSubmitted: (_) => addTask(),
+                                      decoration: InputDecoration(
+                                        hintText: "Enter your task...",
+                                        filled: true,
+                                        fillColor: Colors.white,
+                                        prefixIcon: const Icon(
+                                          Icons.edit_note,
+                                          color: Colors.blue,
+                                        ),
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            15,
+                                          ),
+                                          borderSide: BorderSide.none,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+
+                                  const SizedBox(width: 10),
+
+                                  SizedBox(
+                                    height: 55,
+                                    width: 55,
+                                    child: ElevatedButton(
+                                      onPressed: addTask,
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: const Color(
+                                          0xff2563EB,
+                                        ),
+                                        foregroundColor: Colors.white,
+                                        padding: EdgeInsets.zero,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            15,
+                                          ),
+                                        ),
+                                      ),
+                                      child: const Icon(Icons.add, size: 30),
+                                    ),
+                                  ),
+                                ],
+                              ),
+
+                            const SizedBox(height: 12),
+
+                            // PRIORITY AND CATEGORY
+                            if (isMobile)
+                              Column(
+                                children: [
+                                  buildDropdown(
                                     "Priority",
                                     selectedPriority,
                                     priorities,
@@ -560,194 +586,233 @@ class _TodoViewState extends State<TodoView> {
                                       });
                                     },
                                   ),
-                                ),
 
-                                const SizedBox(width: 10),
+                                  const SizedBox(height: 10),
 
-                                Expanded(
-                                  child: buildDropdown(
+                                  buildDropdown(
                                     "Category",
                                     selectedCategory,
-                                    (categories),
+                                    categories,
                                     (value) {
                                       setState(() {
                                         selectedCategory = value!;
                                       });
                                     },
                                   ),
-                                ),
-                              ],
-                            ),
-                        ],
-                      ),
-                    ),
+                                ],
+                              )
+                            else
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: buildDropdown(
+                                      "Priority",
+                                      selectedPriority,
+                                      priorities,
+                                      (value) {
+                                        setState(() {
+                                          selectedPriority = value!;
+                                        });
+                                      },
+                                    ),
+                                  ),
 
-                    // Search
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: TextField(
-                        controller: searchController,
-                        onChanged: (_) => setState(() {}),
-                        decoration: InputDecoration(
-                          hintText: "Search your tasks...",
-                          prefixIcon: const Icon(Icons.search),
-                          suffixIcon: searchController.text.isNotEmpty
-                              ? IconButton(
-                                  onPressed: () {
-                                    setState(() {
-                                      searchController.clear();
-                                    });
-                                  },
-                                  icon: const Icon(Icons.close),
-                                )
-                              : null,
-                          filled: true,
-                          fillColor: Colors.white,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(15),
-                            borderSide: BorderSide.none,
+                                  const SizedBox(width: 10),
+
+                                  Expanded(
+                                    child: buildDropdown(
+                                      "Category",
+                                      selectedCategory,
+                                      categories,
+                                      (value) {
+                                        setState(() {
+                                          selectedCategory = value!;
+                                        });
+                                      },
+                                    ),
+                                  ),
+                                ],
+                              ),
+                          ],
+                        ),
+                      ),
+
+                      // SEARCH
+                      Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: isSmall ? 12 : 16,
+                        ),
+                        child: TextField(
+                          controller: searchController,
+                          onChanged: (_) => setState(() {}),
+                          decoration: InputDecoration(
+                            hintText: "Search your tasks...",
+                            prefixIcon: const Icon(Icons.search),
+                            suffixIcon: searchController.text.isNotEmpty
+                                ? IconButton(
+                                    onPressed: () {
+                                      setState(() {
+                                        searchController.clear();
+                                      });
+                                    },
+                                    icon: const Icon(Icons.close),
+                                  )
+                                : null,
+                            filled: true,
+                            fillColor: Colors.white,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(15),
+                              borderSide: BorderSide.none,
+                            ),
                           ),
                         ),
                       ),
-                    ),
 
-                    const SizedBox(height: 12),
+                      const SizedBox(height: 12),
 
-                    // Filters
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Row(
-                        children: ["All", "Pending", "Completed"].map((filter) {
-                          bool selected = selectedFilter == filter;
+                      // FILTER BUTTONS
+                      Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: isSmall ? 12 : 16,
+                        ),
+                        child: Row(
+                          children: [
+                            ...["All", "Pending", "Completed"].map((filter) {
+                              bool selected = selectedFilter == filter;
 
-                          return Expanded(
-                            child: Padding(
-                              padding: const EdgeInsets.only(right: 6),
-                              child: ElevatedButton(
-                                onPressed: () {
-                                  setState(() {
-                                    selectedFilter = filter;
-                                  });
-                                },
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: selected
-                                      ? const Color(0xff2563EB)
-                                      : Colors.white,
-                                  foregroundColor: selected
-                                      ? Colors.white
-                                      : Colors.black87,
-                                  elevation: 0,
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 12,
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
+                              return Expanded(
+                                child: Padding(
+                                  padding: const EdgeInsets.only(right: 6),
+                                  child: ElevatedButton(
+                                    onPressed: () {
+                                      setState(() {
+                                        selectedFilter = filter;
+                                      });
+                                    },
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: selected
+                                          ? const Color(0xff2563EB)
+                                          : Colors.white,
+                                      foregroundColor: selected
+                                          ? Colors.white
+                                          : Colors.black87,
+                                      elevation: 0,
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 12,
+                                        horizontal: 3,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                    ),
+                                    child: FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      child: Text(filter),
+                                    ),
                                   ),
                                 ),
-                                child: FittedBox(
-                                  fit: BoxFit.scaleDown,
-                                  child: Text(filter),
-                                ),
-                              ),
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                    ),
-
-                    // Task Heading
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 10,
-                      ),
-                      child: Row(
-                        children: [
-                          const Expanded(
-                            child: Text(
-                              "My Tasks",
-                              style: TextStyle(
-                                fontSize: 21,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-
-                          DropdownButton<String>(
-                            value: selectedSort,
-                            underline: const SizedBox(),
-                            icon: const Icon(Icons.sort),
-                            items: ["Newest", "Oldest", "Priority"].map((
-                              value,
-                            ) {
-                              return DropdownMenuItem(
-                                value: value,
-                                child: Text(value),
                               );
-                            }).toList(),
-                            onChanged: (value) {
-                              setState(() {
-                                selectedSort = value!;
-                              });
-                            },
-                          ),
-                        ],
+                            }),
+                          ],
+                        ),
                       ),
-                    ),
 
-                    // Task List
-                    Expanded(
-                      child: filteredTasks.isEmpty
-                          ? buildEmptyState()
-                          : ListView.builder(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 5,
+                      // TASK HEADING
+                      Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: isSmall ? 14 : 18,
+                          vertical: 12,
+                        ),
+                        child: Row(
+                          children: [
+                            const Expanded(
+                              child: Text(
+                                "My Tasks",
+                                style: TextStyle(
+                                  fontSize: 21,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
-                              itemCount: filteredTasks.length,
-                              itemBuilder: (context, index) {
-                                final task = filteredTasks[index];
+                            ),
 
-                                final int realIndex = tasks.indexOf(task);
-
-                                final bool isCompleted = task["completed"];
-
-                                final String priority = task["priority"];
-
-                                return Dismissible(
-                                  key: ValueKey(task["id"]),
-                                  direction: DismissDirection.endToStart,
-
-                                  background: Container(
-                                    margin: const EdgeInsets.only(bottom: 12),
-                                    padding: const EdgeInsets.only(right: 20),
-                                    alignment: Alignment.centerRight,
-                                    decoration: BoxDecoration(
-                                      color: Colors.red,
-                                      borderRadius: BorderRadius.circular(18),
-                                    ),
-                                    child: const Icon(
-                                      Icons.delete,
-                                      color: Colors.white,
-                                      size: 30,
-                                    ),
-                                  ),
-
-                                  onDismissed: (_) {
-                                    deleteTask(realIndex);
-                                  },
-
-                                  child: buildTaskCard(
-                                    task,
-                                    realIndex,
-                                    isCompleted,
-                                    priority,
-                                  ),
+                            DropdownButton<String>(
+                              value: selectedSort,
+                              underline: const SizedBox(),
+                              icon: const Icon(Icons.sort),
+                              items: ["Newest", "Oldest", "Priority"].map((
+                                value,
+                              ) {
+                                return DropdownMenuItem(
+                                  value: value,
+                                  child: Text(value),
                                 );
+                              }).toList(),
+                              onChanged: (value) {
+                                setState(() {
+                                  selectedSort = value!;
+                                });
                               },
                             ),
-                    ),
-                  ],
+                          ],
+                        ),
+                      ),
+
+                      // TASK LIST
+                      Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: isSmall ? 10 : 16,
+                        ),
+                        child: filteredTasks.isEmpty
+                            ? SizedBox(height: 230, child: buildEmptyState())
+                            : ListView.builder(
+                                shrinkWrap: true,
+                                physics: const NeverScrollableScrollPhysics(),
+                                padding: const EdgeInsets.only(
+                                  top: 5,
+                                  bottom: 20,
+                                ),
+                                itemCount: filteredTasks.length,
+                                itemBuilder: (context, index) {
+                                  final task = filteredTasks[index];
+
+                                  final int realIndex = tasks.indexOf(task);
+
+                                  final bool isCompleted = task["completed"];
+
+                                  final String priority = task["priority"];
+
+                                  return Dismissible(
+                                    key: ValueKey(task["id"]),
+                                    direction: DismissDirection.endToStart,
+                                    background: Container(
+                                      margin: const EdgeInsets.only(bottom: 12),
+                                      padding: const EdgeInsets.only(right: 20),
+                                      alignment: Alignment.centerRight,
+                                      decoration: BoxDecoration(
+                                        color: Colors.red,
+                                        borderRadius: BorderRadius.circular(18),
+                                      ),
+                                      child: const Icon(
+                                        Icons.delete,
+                                        color: Colors.white,
+                                        size: 30,
+                                      ),
+                                    ),
+                                    onDismissed: (_) {
+                                      deleteTask(realIndex);
+                                    },
+                                    child: buildTaskCard(
+                                      task,
+                                      realIndex,
+                                      isCompleted,
+                                      priority,
+                                    ),
+                                  );
+                                },
+                              ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             );
@@ -757,7 +822,7 @@ class _TodoViewState extends State<TodoView> {
     );
   }
 
-  // Statistics Card
+  // STATISTICS CARD
 
   Widget buildStatCard(String title, String value, IconData icon) {
     return Expanded(
@@ -770,9 +835,7 @@ class _TodoViewState extends State<TodoView> {
         child: Column(
           children: [
             Icon(icon, color: Colors.white, size: 24),
-
             const SizedBox(height: 5),
-
             FittedBox(
               child: Text(
                 value,
@@ -783,7 +846,6 @@ class _TodoViewState extends State<TodoView> {
                 ),
               ),
             ),
-
             FittedBox(
               child: Text(
                 title,
@@ -796,7 +858,7 @@ class _TodoViewState extends State<TodoView> {
     );
   }
 
-  // Dropdown Widget
+  // DROPDOWN WIDGET
 
   Widget buildDropdown(
     String label,
@@ -827,7 +889,7 @@ class _TodoViewState extends State<TodoView> {
     );
   }
 
-  // Task Card
+  // TASK CARD
 
   Widget buildTaskCard(
     Map<String, dynamic> task,
@@ -945,7 +1007,6 @@ class _TodoViewState extends State<TodoView> {
                     ],
                   ),
                 ),
-
                 PopupMenuItem(
                   value: "delete",
                   child: Row(
@@ -964,7 +1025,7 @@ class _TodoViewState extends State<TodoView> {
     );
   }
 
-  // Empty State
+  // EMPTY STATE
 
   Widget buildEmptyState() {
     return Center(
