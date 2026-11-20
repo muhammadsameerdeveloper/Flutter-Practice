@@ -1,28 +1,73 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/services.dart';
+
+// ================= TASK MODEL =================
 
 class TodoTask {
-  final String id;
+  String id;
   String title;
-  String notes;
+  String description;
   String category;
   String priority;
   DateTime createdAt;
   DateTime dueDate;
-  bool isCompleted;
-  bool isFavorite;
+  bool completed;
+  bool favorite;
+  bool archived;
+  List<Map<String, dynamic>> subtasks;
 
   TodoTask({
     required this.id,
     required this.title,
-    required this.notes,
+    required this.description,
     required this.category,
     required this.priority,
     required this.createdAt,
     required this.dueDate,
-    this.isCompleted = false,
-    this.isFavorite = false,
+    this.completed = false,
+    this.favorite = false,
+    this.archived = false,
+    this.subtasks = const [],
   });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'title': title,
+      'description': description,
+      'category': category,
+      'priority': priority,
+      'createdAt': createdAt.toIso8601String(),
+      'dueDate': dueDate.toIso8601String(),
+      'completed': completed,
+      'favorite': favorite,
+      'archived': archived,
+      'subtasks': subtasks,
+    };
+  }
+
+  factory TodoTask.fromJson(Map<String, dynamic> json) {
+    return TodoTask(
+      id: json['id'],
+      title: json['title'],
+      description: json['description'] ?? '',
+      category: json['category'] ?? 'General',
+      priority: json['priority'] ?? 'Medium',
+      createdAt: DateTime.parse(json['createdAt']),
+      dueDate: DateTime.parse(json['dueDate']),
+      completed: json['completed'] ?? false,
+      favorite: json['favorite'] ?? false,
+      archived: json['archived'] ?? false,
+      subtasks: List<Map<String, dynamic>>.from(
+        (json['subtasks'] ?? []).map((e) => Map<String, dynamic>.from(e)),
+      ),
+    );
+  }
 }
+
+// ================= TODO VIEW =================
 
 class TodoView extends StatefulWidget {
   const TodoView({super.key});
@@ -31,271 +76,337 @@ class TodoView extends StatefulWidget {
   State<TodoView> createState() => _TodoViewState();
 }
 
-class _TodoViewState extends State<TodoView>
-    with SingleTickerProviderStateMixin {
-  final TextEditingController controller = TextEditingController();
-  final TextEditingController notesController = TextEditingController();
-  final TextEditingController searchController = TextEditingController();
+class _TodoViewState extends State<TodoView> {
+  final titleController = TextEditingController();
+  final descriptionController = TextEditingController();
+  final searchController = TextEditingController();
+  final subtaskController = TextEditingController();
 
-  final List<TodoTask> tasks = [];
+  List<TodoTask> tasks = [];
+  List<String> selectedIds = [];
 
-  late AnimationController animationController;
+  String priority = 'Medium';
+  String category = 'General';
+  String filter = 'All';
+  String sort = 'Newest';
 
-  String selectedFilter = "All";
-  String selectedPriority = "Medium";
-  String selectedCategory = "General";
-  String selectedSort = "Newest";
-  String selectedCategoryFilter = "All";
+  DateTime dueDate = DateTime.now().add(const Duration(days: 1));
 
-  DateTime selectedDueDate = DateTime.now().add(const Duration(days: 1));
+  bool darkMode = false;
+  bool loading = true;
+  bool selectionMode = false;
+  bool favoritesOnly = false;
+  bool archiveMode = false;
+  bool gridMode = false;
 
-  bool isDarkMode = false;
-  bool isGridView = false;
-  bool showFavoritesOnly = false;
+  final priorities = ['Low', 'Medium', 'High'];
 
-  final List<String> priorities = ["Low", "Medium", "High"];
-
-  final List<String> categories = [
-    "General",
-    "Work",
-    "Personal",
-    "Study",
-    "Shopping",
-    "Health",
+  final categories = [
+    'General',
+    'Work',
+    'Personal',
+    'Study',
+    'Shopping',
+    'Health',
   ];
 
-  final List<String> filters = ["All", "Pending", "Completed", "Overdue"];
+  final filters = ['All', 'Pending', 'Completed', 'Overdue'];
 
-  // COLORS
+  // ================= COLORS =================
 
-  Color get primaryColor => const Color(0xff2563EB);
+  Color get primary => const Color(0xff2563EB);
 
-  Color get backgroundColor =>
-      isDarkMode ? const Color(0xff101827) : const Color(0xffF3F6FC);
+  Color get background =>
+      darkMode ? const Color(0xff101827) : const Color(0xffF3F6FC);
 
-  Color get cardColor => isDarkMode ? const Color(0xff1F2937) : Colors.white;
+  Color get card => darkMode ? const Color(0xff1F2937) : Colors.white;
 
-  Color get textColor => isDarkMode ? Colors.white : const Color(0xff1E293B);
+  Color get text => darkMode ? Colors.white : const Color(0xff1E293B);
 
-  Color get secondaryTextColor =>
-      isDarkMode ? Colors.white60 : Colors.grey.shade600;
+  Color get muted => darkMode ? Colors.white60 : Colors.grey.shade600;
 
-  // STATISTICS
-
-  int get totalTasks => tasks.length;
-
-  int get completedTasks => tasks.where((task) => task.isCompleted).length;
-
-  int get pendingTasks => totalTasks - completedTasks;
-
-  int get overdueTasks => tasks
-      .where((task) => !task.isCompleted && isOverdue(task.dueDate))
-      .length;
-
-  int get favoriteTasks => tasks.where((task) => task.isFavorite).length;
-
-  double get progress => totalTasks == 0 ? 0 : completedTasks / totalTasks;
-
-  // INITIALIZATION
+  // ================= INITIALIZATION =================
 
   @override
   void initState() {
     super.initState();
-
-    animationController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 800),
-    );
-
-    animationController.forward();
+    loadTasks();
   }
 
-  @override
-  void dispose() {
-    controller.dispose();
-    notesController.dispose();
-    searchController.dispose();
-    animationController.dispose();
-    super.dispose();
+  Future<void> loadTasks() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedData = prefs.getString('advanced_todo_tasks');
+
+      if (savedData != null) {
+        final decoded = jsonDecode(savedData) as List;
+
+        tasks = decoded.map((item) {
+          return TodoTask.fromJson(Map<String, dynamic>.from(item));
+        }).toList();
+      }
+    } catch (e) {
+      debugPrint('Loading error: $e');
+    }
+
+    if (!mounted) return;
+
+    setState(() {
+      loading = false;
+    });
   }
 
-  // DATE HELPERS
+  Future<void> saveTasks() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
 
-  bool isSameDay(DateTime first, DateTime second) {
-    return first.year == second.year &&
-        first.month == second.month &&
-        first.day == second.day;
+      final encoded = jsonEncode(tasks.map((task) => task.toJson()).toList());
+
+      await prefs.setString('advanced_todo_tasks', encoded);
+    } catch (e) {
+      debugPrint('Saving error: $e');
+      if (mounted) {
+        message('Unable to save tasks!', error: true);
+      }
+    }
   }
+
+  // ================= STATISTICS =================
+
+  List<TodoTask> get activeTasks =>
+      tasks.where((task) => !task.archived).toList();
+
+  int get total => activeTasks.length;
+
+  int get completed => activeTasks.where((task) => task.completed).length;
+
+  int get pending => activeTasks.where((task) => !task.completed).length;
+
+  int get overdue => activeTasks
+      .where((task) => !task.completed && isOverdue(task.dueDate))
+      .length;
+
+  int get favorites => activeTasks.where((task) => task.favorite).length;
+
+  int get archived => tasks.where((task) => task.archived).length;
+
+  double get progress => total == 0 ? 0 : completed / total;
+
+  int get subtaskTotal =>
+      activeTasks.fold(0, (sum, task) => sum + task.subtasks.length);
+
+  int get subtaskCompleted => activeTasks.fold(
+    0,
+    (sum, task) =>
+        sum + task.subtasks.where((subtask) => subtask['done'] == true).length,
+  );
+
+  // ================= DATE HELPERS =================
 
   bool isOverdue(DateTime date) {
-    final today = DateTime.now();
+    final now = DateTime.now();
 
-    return date.isBefore(DateTime(today.year, today.month, today.day));
+    return date.isBefore(DateTime(now.year, now.month, now.day));
+  }
+
+  bool sameDay(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
   }
 
   String formatDate(DateTime date) {
-    return "${date.day.toString().padLeft(2, '0')}/"
-        "${date.month.toString().padLeft(2, '0')}/"
-        "${date.year}";
+    return '${date.day.toString().padLeft(2, '0')}/'
+        '${date.month.toString().padLeft(2, '0')}/'
+        '${date.year}';
   }
 
-  String getDueLabel(DateTime date) {
+  String dueLabel(DateTime date) {
     final today = DateTime.now();
 
-    if (isSameDay(date, today)) return "Today";
+    if (sameDay(date, today)) return 'Today';
 
-    if (isSameDay(date, today.add(const Duration(days: 1)))) {
-      return "Tomorrow";
+    if (sameDay(date, today.add(const Duration(days: 1)))) {
+      return 'Tomorrow';
     }
 
-    if (isOverdue(date)) return "Overdue";
+    if (isOverdue(date)) return 'Overdue';
 
     return formatDate(date);
   }
 
-  Future<DateTime?> pickDate(DateTime initialDate) async {
-    final today = DateTime.now();
+  Future<DateTime?> chooseDate(DateTime initial) {
+    final now = DateTime.now();
 
     return showDatePicker(
       context: context,
-      initialDate:
-          initialDate.isBefore(DateTime(today.year, today.month, today.day))
-          ? today
-          : initialDate,
-      firstDate: DateTime(today.year, today.month, today.day),
+      initialDate: initial.isBefore(DateTime(now.year, now.month, now.day))
+          ? DateTime(now.year, now.month, now.day)
+          : initial,
+      firstDate: DateTime(now.year, now.month, now.day),
       lastDate: DateTime(2100),
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(
-            context,
-          ).copyWith(colorScheme: ColorScheme.light(primary: primaryColor)),
-          child: child!,
-        );
-      },
     );
   }
 
-  // MESSAGE
+  // ================= MESSAGES =================
 
-  void showMessage(String message, {bool error = false}) {
+  void message(String value, {bool error = false}) {
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
       ..showSnackBar(
         SnackBar(
-          content: Row(
-            children: [
-              Icon(
-                error ? Icons.error_outline : Icons.check_circle_outline,
-                color: Colors.white,
-              ),
-              const SizedBox(width: 10),
-              Expanded(child: Text(message)),
-            ],
-          ),
+          content: Text(value),
           behavior: SnackBarBehavior.floating,
-          backgroundColor: error ? Colors.red : const Color(0xff2563EB),
-          duration: const Duration(seconds: 2),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
+          backgroundColor: error ? Colors.red : primary,
         ),
       );
   }
 
-  // ADD TASK
+  // ================= ADD TASK =================
 
   void addTask() {
-    final title = controller.text.trim();
-
-    if (title.isEmpty) {
-      showMessage("Please enter task title!", error: true);
+    if (titleController.text.trim().isEmpty) {
+      message('Please enter a task title!', error: true);
       return;
     }
 
-    final task = TodoTask(
-      id: DateTime.now().microsecondsSinceEpoch.toString(),
-      title: title,
-      notes: notesController.text.trim(),
-      category: selectedCategory,
-      priority: selectedPriority,
-      createdAt: DateTime.now(),
-      dueDate: selectedDueDate,
-    );
-
     setState(() {
-      tasks.insert(0, task);
+      tasks.insert(
+        0,
+        TodoTask(
+          id: DateTime.now().microsecondsSinceEpoch.toString(),
+          title: titleController.text.trim(),
+          description: descriptionController.text.trim(),
+          category: category,
+          priority: priority,
+          createdAt: DateTime.now(),
+          dueDate: dueDate,
+        ),
+      );
 
-      controller.clear();
-      notesController.clear();
+      titleController.clear();
+      descriptionController.clear();
 
-      selectedPriority = "Medium";
-      selectedCategory = "General";
-      selectedDueDate = DateTime.now().add(const Duration(days: 1));
+      priority = 'Medium';
+      category = 'General';
+      dueDate = DateTime.now().add(const Duration(days: 1));
     });
 
+    saveTasks();
     FocusScope.of(context).unfocus();
-    animationController.forward(from: 0);
-
-    showMessage("Task added successfully!");
+    message('Task created successfully!');
   }
 
-  // EDIT TASK
+  // ================= SUBTASKS =================
+
+  void addSubtask(TodoTask task) {
+    final subController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: card,
+          title: Text('Add Subtask', style: TextStyle(color: text)),
+          content: TextField(
+            controller: subController,
+            autofocus: true,
+            decoration: const InputDecoration(
+              hintText: 'Enter subtask...',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                if (subController.text.trim().isEmpty) return;
+
+                setState(() {
+                  task.subtasks.add({
+                    'title': subController.text.trim(),
+                    'done': false,
+                  });
+                });
+
+                saveTasks();
+                Navigator.pop(dialogContext);
+                message('Subtask added!');
+              },
+              child: const Text('Add'),
+            ),
+          ],
+        );
+      },
+    ).then((_) => subController.dispose());
+  }
+
+  void toggleSubtask(TodoTask task, int index, bool value) {
+    setState(() {
+      task.subtasks[index]['done'] = value;
+
+      if (task.subtasks.isNotEmpty &&
+          task.subtasks.every((s) => s['done'] == true)) {
+        task.completed = true;
+      } else {
+        task.completed = false;
+      }
+    });
+
+    saveTasks();
+  }
+
+  void deleteSubtask(TodoTask task, int index) {
+    setState(() {
+      task.subtasks.removeAt(index);
+    });
+
+    saveTasks();
+  }
+
+  // ================= EDIT TASK =================
 
   Future<void> editTask(TodoTask task) async {
-    final editController = TextEditingController(text: task.title);
+    final title = TextEditingController(text: task.title);
+    final description = TextEditingController(text: task.description);
 
-    final editNotesController = TextEditingController(text: task.notes);
-
-    String editPriority = task.priority;
-    String editCategory = task.category;
-    DateTime editDueDate = task.dueDate;
+    String newPriority = task.priority;
+    String newCategory = task.category;
+    DateTime newDate = task.dueDate;
 
     await showDialog(
       context: context,
       builder: (dialogContext) {
         return StatefulBuilder(
-          builder: (context, setDialogState) {
+          builder: (context, dialogSetState) {
             return AlertDialog(
-              backgroundColor: cardColor,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(22),
-              ),
-              title: Text(
-                "Edit Task",
-                style: TextStyle(color: textColor, fontWeight: FontWeight.bold),
-              ),
+              backgroundColor: card,
+              title: Text('Edit Task', style: TextStyle(color: text)),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     TextField(
-                      controller: editController,
-                      style: TextStyle(color: textColor),
+                      controller: title,
                       decoration: const InputDecoration(
-                        labelText: "Task Title",
-                        prefixIcon: Icon(Icons.edit),
+                        labelText: 'Task title',
                         border: OutlineInputBorder(),
                       ),
                     ),
-                    const SizedBox(height: 15),
+                    const SizedBox(height: 12),
                     TextField(
-                      controller: editNotesController,
+                      controller: description,
                       maxLines: 3,
-                      style: TextStyle(color: textColor),
                       decoration: const InputDecoration(
-                        labelText: "Description",
-                        prefixIcon: Icon(Icons.notes),
+                        labelText: 'Description',
                         border: OutlineInputBorder(),
                       ),
                     ),
-                    const SizedBox(height: 15),
+                    const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
-                      value: editPriority,
-                      isExpanded: true,
-                      decoration: const InputDecoration(
-                        labelText: "Priority",
-                        border: OutlineInputBorder(),
-                      ),
+                      value: newPriority,
+                      decoration: const InputDecoration(labelText: 'Priority'),
                       items: priorities.map((value) {
                         return DropdownMenuItem(
                           value: value,
@@ -304,20 +415,16 @@ class _TodoViewState extends State<TodoView>
                       }).toList(),
                       onChanged: (value) {
                         if (value != null) {
-                          setDialogState(() {
-                            editPriority = value;
+                          dialogSetState(() {
+                            newPriority = value;
                           });
                         }
                       },
                     ),
-                    const SizedBox(height: 15),
+                    const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
-                      value: editCategory,
-                      isExpanded: true,
-                      decoration: const InputDecoration(
-                        labelText: "Category",
-                        border: OutlineInputBorder(),
-                      ),
+                      value: newCategory,
+                      decoration: const InputDecoration(labelText: 'Category'),
                       items: categories.map((value) {
                         return DropdownMenuItem(
                           value: value,
@@ -326,55 +433,51 @@ class _TodoViewState extends State<TodoView>
                       }).toList(),
                       onChanged: (value) {
                         if (value != null) {
-                          setDialogState(() {
-                            editCategory = value;
+                          dialogSetState(() {
+                            newCategory = value;
                           });
                         }
                       },
                     ),
-                    const SizedBox(height: 15),
+                    const SizedBox(height: 12),
                     OutlinedButton.icon(
                       onPressed: () async {
-                        final date = await pickDate(editDueDate);
+                        final date = await chooseDate(newDate);
 
                         if (date != null) {
-                          setDialogState(() {
-                            editDueDate = date;
+                          dialogSetState(() {
+                            newDate = date;
                           });
                         }
                       },
                       icon: const Icon(Icons.calendar_month),
-                      label: Text("Due: ${formatDate(editDueDate)}"),
+                      label: Text(formatDate(newDate)),
                     ),
                   ],
                 ),
               ),
               actions: [
                 TextButton(
-                  onPressed: () {
-                    Navigator.pop(dialogContext);
-                  },
-                  child: const Text("Cancel"),
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Cancel'),
                 ),
                 ElevatedButton(
                   onPressed: () {
-                    if (editController.text.trim().isEmpty) {
-                      showMessage("Title cannot be empty!", error: true);
-                      return;
-                    }
+                    if (title.text.trim().isEmpty) return;
 
                     setState(() {
-                      task.title = editController.text.trim();
-                      task.notes = editNotesController.text.trim();
-                      task.priority = editPriority;
-                      task.category = editCategory;
-                      task.dueDate = editDueDate;
+                      task.title = title.text.trim();
+                      task.description = description.text.trim();
+                      task.priority = newPriority;
+                      task.category = newCategory;
+                      task.dueDate = newDate;
                     });
 
+                    saveTasks();
                     Navigator.pop(dialogContext);
-                    showMessage("Task updated successfully!");
+                    message('Task updated!');
                   },
-                  child: const Text("Update"),
+                  child: const Text('Save Changes'),
                 ),
               ],
             );
@@ -383,11 +486,34 @@ class _TodoViewState extends State<TodoView>
       },
     );
 
-    editController.dispose();
-    editNotesController.dispose();
+    title.dispose();
+    description.dispose();
   }
 
-  // DUPLICATE TASK
+  // ================= TASK ACTIONS =================
+
+  void toggleTask(TodoTask task) {
+    setState(() {
+      task.completed = !task.completed;
+
+      if (task.completed) {
+        for (final subtask in task.subtasks) {
+          subtask['done'] = true;
+        }
+      }
+    });
+
+    saveTasks();
+    message(task.completed ? 'Task completed!' : 'Task reopened!');
+  }
+
+  void toggleFavorite(TodoTask task) {
+    setState(() {
+      task.favorite = !task.favorite;
+    });
+
+    saveTasks();
+  }
 
   void duplicateTask(TodoTask task) {
     setState(() {
@@ -395,197 +521,213 @@ class _TodoViewState extends State<TodoView>
         0,
         TodoTask(
           id: DateTime.now().microsecondsSinceEpoch.toString(),
-          title: "${task.title} (Copy)",
-          notes: task.notes,
+          title: '${task.title} Copy',
+          description: task.description,
           category: task.category,
           priority: task.priority,
           createdAt: DateTime.now(),
           dueDate: task.dueDate,
+          subtasks: task.subtasks.map((s) {
+            return {'title': s['title'], 'done': false};
+          }).toList(),
         ),
       );
     });
 
-    showMessage("Task duplicated!");
+    saveTasks();
+    message('Task duplicated!');
   }
 
-  // DELETE TASK WITH UNDO
+  void archiveTask(TodoTask task) {
+    setState(() {
+      task.archived = !task.archived;
+    });
+
+    saveTasks();
+    message(task.archived ? 'Task archived!' : 'Task restored!');
+  }
 
   void deleteTask(TodoTask task) {
     final index = tasks.indexOf(task);
-
     if (index == -1) return;
 
     setState(() {
-      tasks.removeAt(index);
+      tasks.remove(task);
     });
+
+    saveTasks();
 
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
       ..showSnackBar(
         SnackBar(
-          content: const Text("Task deleted!"),
-          behavior: SnackBarBehavior.floating,
+          content: const Text('Task deleted!'),
           action: SnackBarAction(
-            label: "UNDO",
+            label: 'UNDO',
             onPressed: () {
-              if (!mounted) return;
-
               setState(() {
-                tasks.insert(index.clamp(0, tasks.length), task);
+                tasks.insert(index.clamp(0, tasks.length).toInt(), task);
               });
+
+              saveTasks();
             },
           ),
         ),
       );
   }
 
-  // COMPLETE TASK
+  // ================= BULK ACTIONS =================
 
-  void toggleTask(TodoTask task, bool value) {
+  void selectTask(TodoTask task) {
     setState(() {
-      task.isCompleted = value;
-    });
+      if (selectedIds.contains(task.id)) {
+        selectedIds.remove(task.id);
+      } else {
+        selectedIds.add(task.id);
+      }
 
-    showMessage(value ? "Task completed!" : "Task reopened!");
+      selectionMode = selectedIds.isNotEmpty;
+    });
   }
 
-  // FAVORITE TASK
-
-  void toggleFavorite(TodoTask task) {
+  void selectAll() {
     setState(() {
-      task.isFavorite = !task.isFavorite;
+      if (selectedIds.length == filteredTasks.length) {
+        selectedIds.clear();
+        selectionMode = false;
+      } else {
+        selectedIds = filteredTasks.map((e) => e.id).toList();
+        selectionMode = true;
+      }
     });
-
-    showMessage(
-      task.isFavorite ? "Added to favorites!" : "Removed from favorites!",
-    );
   }
 
-  // CLEAR COMPLETED
+  void bulkComplete() {
+    setState(() {
+      for (final task in tasks) {
+        if (selectedIds.contains(task.id)) {
+          task.completed = true;
 
-  void clearCompleted() {
-    if (completedTasks == 0) {
-      showMessage("No completed tasks!", error: true);
+          for (final subtask in task.subtasks) {
+            subtask['done'] = true;
+          }
+        }
+      }
+
+      selectedIds.clear();
+      selectionMode = false;
+    });
+
+    saveTasks();
+    message('Selected tasks completed!');
+  }
+
+  void bulkDelete() {
+    if (selectedIds.isEmpty) return;
+
+    setState(() {
+      tasks.removeWhere((task) => selectedIds.contains(task.id));
+
+      selectedIds.clear();
+      selectionMode = false;
+    });
+
+    saveTasks();
+    message('Selected tasks deleted!');
+  }
+
+  // ================= EXPORT BACKUP =================
+
+  Future<void> exportTasks() async {
+    final data = jsonEncode(tasks.map((task) => task.toJson()).toList());
+
+    await Clipboard.setData(ClipboardData(text: data));
+
+    message('JSON backup copied to clipboard!');
+  }
+
+  // ================= IMPORT BACKUP =================
+
+  Future<void> importTasks() async {
+    final clipboard = await Clipboard.getData('text/plain');
+
+    if (clipboard?.text == null) {
+      message('No backup found!', error: true);
       return;
     }
 
-    setState(() {
-      tasks.removeWhere((task) => task.isCompleted);
-    });
+    try {
+      final decoded = jsonDecode(clipboard!.text!) as List;
 
-    showMessage("Completed tasks cleared!");
-  }
+      final imported = decoded.map((item) {
+        return TodoTask.fromJson(Map<String, dynamic>.from(item));
+      }).toList();
 
-  // CLEAR ALL
-
-  Future<void> clearAllTasks() async {
-    if (tasks.isEmpty) return;
-
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          backgroundColor: cardColor,
-          title: Text("Delete All Tasks?", style: TextStyle(color: textColor)),
-          content: Text(
-            "Are you sure you want to delete all tasks?",
-            style: TextStyle(color: textColor),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(dialogContext, false);
-              },
-              child: const Text("Cancel"),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-                foregroundColor: Colors.white,
-              ),
-              onPressed: () {
-                Navigator.pop(dialogContext, true);
-              },
-              child: const Text("Delete All"),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (confirm == true && mounted) {
       setState(() {
-        tasks.clear();
+        tasks = imported;
       });
 
-      showMessage("All tasks deleted!");
+      await saveTasks();
+      message('Backup restored successfully!');
+    } catch (e) {
+      message('Invalid backup data!', error: true);
     }
   }
 
-  // FILTER AND SORT
+  // ================= FILTER & SORT =================
 
   List<TodoTask> get filteredTasks {
-    final search = searchController.text.trim().toLowerCase();
+    final search = searchController.text.toLowerCase();
 
-    List<TodoTask> result = tasks.where((task) {
+    final result = tasks.where((task) {
+      final isCorrectPage = archiveMode ? task.archived : !task.archived;
+
       final matchesSearch =
           task.title.toLowerCase().contains(search) ||
-          task.notes.toLowerCase().contains(search);
+          task.description.toLowerCase().contains(search) ||
+          task.category.toLowerCase().contains(search);
 
       final matchesFilter =
-          selectedFilter == "All" ||
-          (selectedFilter == "Pending" && !task.isCompleted) ||
-          (selectedFilter == "Completed" && task.isCompleted) ||
-          (selectedFilter == "Overdue" &&
-              !task.isCompleted &&
-              isOverdue(task.dueDate));
+          filter == 'All' ||
+          (filter == 'Pending' && !task.completed) ||
+          (filter == 'Completed' && task.completed) ||
+          (filter == 'Overdue' && !task.completed && isOverdue(task.dueDate));
 
-      final matchesCategory =
-          selectedCategoryFilter == "All" ||
-          task.category == selectedCategoryFilter;
+      final matchesFavorite = !favoritesOnly || task.favorite;
 
-      final matchesFavorite = !showFavoritesOnly || task.isFavorite;
-
-      return matchesSearch &&
+      return isCorrectPage &&
+          matchesSearch &&
           matchesFilter &&
-          matchesCategory &&
-          matchesFavorite;
+          matchesFavorite &&
+          (selectionMode || true);
     }).toList();
 
-    switch (selectedSort) {
-      case "Newest":
+    switch (sort) {
+      case 'Newest':
         result.sort((a, b) => b.createdAt.compareTo(a.createdAt));
         break;
 
-      case "Oldest":
+      case 'Oldest':
         result.sort((a, b) => a.createdAt.compareTo(b.createdAt));
         break;
 
-      case "Priority":
-        int priorityValue(String value) {
-          switch (value) {
-            case "High":
-              return 1;
-            case "Medium":
-              return 2;
-            default:
-              return 3;
-          }
+      case 'Priority':
+        int rank(String value) {
+          return value == 'High'
+              ? 1
+              : value == 'Medium'
+              ? 2
+              : 3;
         }
 
-        result.sort(
-          (a, b) =>
-              priorityValue(a.priority).compareTo(priorityValue(b.priority)),
-        );
+        result.sort((a, b) => rank(a.priority).compareTo(rank(b.priority)));
         break;
 
-      case "A-Z":
-        result.sort(
-          (a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()),
-        );
+      case 'A-Z':
+        result.sort((a, b) => a.title.compareTo(b.title));
         break;
 
-      case "Due Date":
+      case 'Due Date':
         result.sort((a, b) => a.dueDate.compareTo(b.dueDate));
         break;
     }
@@ -593,238 +735,215 @@ class _TodoViewState extends State<TodoView>
     return result;
   }
 
-  // PRIORITY COLORS
+  // ================= PRIORITY COLOR =================
 
-  Color getPriorityColor(String priority) {
-    switch (priority) {
-      case "High":
+  Color priorityColor(String value) {
+    switch (value) {
+      case 'High':
         return Colors.red;
-      case "Medium":
+      case 'Medium':
         return Colors.orange;
       default:
         return Colors.green;
     }
   }
 
-  // CATEGORY ICON
-
-  IconData getCategoryIcon(String category) {
-    switch (category) {
-      case "Work":
-        return Icons.work_outline;
-      case "Personal":
-        return Icons.person_outline;
-      case "Study":
-        return Icons.school_outlined;
-      case "Shopping":
-        return Icons.shopping_bag_outlined;
-      case "Health":
-        return Icons.favorite_outline;
-      default:
-        return Icons.category_outlined;
-    }
-  }
-
-  // BUILD MAIN SCREEN
+  // ================= MAIN UI =================
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: backgroundColor,
+      backgroundColor: background,
+
       appBar: AppBar(
-        elevation: 0,
-        backgroundColor: primaryColor,
+        backgroundColor: primary,
         foregroundColor: Colors.white,
         centerTitle: true,
-        title: const Text(
-          "My Todo App",
-          style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.5),
+        title: Text(
+          selectionMode
+              ? '${selectedIds.length} Selected'
+              : archiveMode
+              ? 'Archived Tasks'
+              : 'Pro Todo Manager',
+          style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         actions: [
-          IconButton(
-            tooltip: "Change Theme",
-            onPressed: () {
-              setState(() {
-                isDarkMode = !isDarkMode;
-              });
-            },
-            icon: Icon(isDarkMode ? Icons.light_mode : Icons.dark_mode),
-          ),
-          PopupMenuButton<String>(
-            onSelected: (value) {
-              if (value == "clear") clearAllTasks();
-              if (value == "completed") clearCompleted();
-
-              if (value == "favorites") {
+          if (selectionMode) ...[
+            IconButton(
+              onPressed: selectAll,
+              icon: const Icon(Icons.select_all),
+              tooltip: 'Select All',
+            ),
+            IconButton(
+              onPressed: bulkComplete,
+              icon: const Icon(Icons.done_all),
+              tooltip: 'Complete Selected',
+            ),
+            IconButton(
+              onPressed: bulkDelete,
+              icon: const Icon(Icons.delete),
+              tooltip: 'Delete Selected',
+            ),
+          ] else ...[
+            IconButton(
+              onPressed: () {
                 setState(() {
-                  showFavoritesOnly = !showFavoritesOnly;
+                  darkMode = !darkMode;
                 });
-              }
+              },
+              icon: Icon(darkMode ? Icons.light_mode : Icons.dark_mode),
+            ),
+            PopupMenuButton<String>(
+              onSelected: (value) {
+                if (value == 'archive') {
+                  setState(() {
+                    archiveMode = !archiveMode;
+                  });
+                }
 
-              if (value == "view") {
-                setState(() {
-                  isGridView = !isGridView;
-                });
-              }
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: "favorites",
-                child: Text("Toggle Favorites"),
-              ),
-              PopupMenuItem(
-                value: "view",
-                child: Text(isGridView ? "List View" : "Grid View"),
-              ),
-              const PopupMenuItem(
-                value: "completed",
-                child: Text("Clear Completed"),
-              ),
-              const PopupMenuItem(
-                value: "clear",
-                child: Text("Delete All Tasks"),
-              ),
-            ],
-          ),
+                if (value == 'export') exportTasks();
+                if (value == 'import') importTasks();
+
+                if (value == 'favorites') {
+                  setState(() {
+                    favoritesOnly = !favoritesOnly;
+                  });
+                }
+
+                if (value == 'grid') {
+                  setState(() {
+                    gridMode = !gridMode;
+                  });
+                }
+              },
+              itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: 'archive',
+                  child: Text('Toggle Archive'),
+                ),
+                const PopupMenuItem(
+                  value: 'favorites',
+                  child: Text('Toggle Favorites'),
+                ),
+                const PopupMenuItem(
+                  value: 'grid',
+                  child: Text('Toggle Grid/List'),
+                ),
+                const PopupMenuItem(
+                  value: 'export',
+                  child: Text('Export JSON Backup'),
+                ),
+                const PopupMenuItem(
+                  value: 'import',
+                  child: Text('Import JSON Backup'),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
-      body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final width = constraints.maxWidth;
-            final isSmall = width < 380;
-            final contentWidth = width > 1100 ? 1000.0 : width;
 
-            return Center(
-              child: SizedBox(
-                width: contentWidth,
-                child: SingleChildScrollView(
-                  physics: const BouncingScrollPhysics(),
-                  padding: const EdgeInsets.only(bottom: 30),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      buildDashboard(isSmall),
-                      const SizedBox(height: 18),
-                      buildAddTaskSection(isSmall),
-                      const SizedBox(height: 18),
-                      buildSearch(isSmall),
-                      const SizedBox(height: 15),
-                      buildFilters(isSmall),
-                      const SizedBox(height: 12),
-                      buildCategoryFilter(isSmall),
-                      const SizedBox(height: 15),
-                      buildTaskHeading(isSmall),
-                      buildTaskList(isSmall),
-                    ],
-                  ),
-                ),
+      body: loading
+          ? Center(child: CircularProgressIndicator(color: primary))
+          : SafeArea(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final width = constraints.maxWidth;
+                  final contentWidth = width > 1100 ? 1000.0 : width;
+
+                  return Center(
+                    child: SizedBox(
+                      width: contentWidth,
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.only(bottom: 30),
+                        physics: const BouncingScrollPhysics(),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            if (!archiveMode) ...[
+                              dashboard(),
+                              const SizedBox(height: 18),
+                              addTaskSection(),
+                            ] else
+                              archiveHeader(),
+
+                            const SizedBox(height: 18),
+                            searchSection(),
+                            const SizedBox(height: 14),
+                            filterSection(),
+                            const SizedBox(height: 12),
+                            headingSection(),
+                            taskList(),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
               ),
-            );
-          },
-        ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: primaryColor,
-        foregroundColor: Colors.white,
-        tooltip: "Scroll to top",
-        onPressed: () {
-          FocusScope.of(context).unfocus();
-          showMessage("Use the task form above to add a task.");
-        },
-        child: const Icon(Icons.add),
-      ),
+            ),
     );
   }
 
-  // DASHBOARD
+  // ================= DASHBOARD =================
 
-  Widget buildDashboard(bool isSmall) {
+  Widget dashboard() {
     return Container(
-      padding: EdgeInsets.all(isSmall ? 16 : 23),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: primaryColor,
+        color: primary,
         borderRadius: const BorderRadius.only(
           bottomLeft: Radius.circular(28),
           bottomRight: Radius.circular(28),
         ),
-        boxShadow: [
-          BoxShadow(
-            color: primaryColor.withOpacity(0.20),
-            blurRadius: 15,
-            offset: const Offset(0, 5),
-          ),
-        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            "Manage Your Tasks",
+            'Your Productivity',
             style: TextStyle(
-              fontSize: 26,
               color: Colors.white,
+              fontSize: 25,
               fontWeight: FontWeight.bold,
             ),
           ),
-          const SizedBox(height: 5),
           const Text(
-            "Stay organized and productive!",
+            'Plan smart. Work better. Achieve more.',
             style: TextStyle(color: Colors.white70),
           ),
-          const SizedBox(height: 22),
+          const SizedBox(height: 20),
 
-          // RESPONSIVE STATISTICS
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final itemWidth = (constraints.maxWidth - 12) / 2;
-
-              return Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  buildStatCard("Total", totalTasks, Icons.list_alt, itemWidth),
-                  buildStatCard(
-                    "Completed",
-                    completedTasks,
-                    Icons.task_alt,
-                    itemWidth,
-                  ),
-                  buildStatCard(
-                    "Pending",
-                    pendingTasks,
-                    Icons.pending_actions,
-                    itemWidth,
-                  ),
-                  buildStatCard(
-                    "Overdue",
-                    overdueTasks,
-                    Icons.warning_amber,
-                    itemWidth,
-                  ),
-                ],
-              );
-            },
+          Wrap(
+            spacing: 9,
+            runSpacing: 9,
+            children: [
+              statCard('Total', total, Icons.list_alt),
+              statCard('Done', completed, Icons.check_circle),
+              statCard('Pending', pending, Icons.pending_actions),
+              statCard('Overdue', overdue, Icons.warning),
+              statCard('Favorites', favorites, Icons.favorite),
+              statCard('Archived', archived, Icons.archive),
+            ],
           ),
 
-          const SizedBox(height: 23),
+          const SizedBox(height: 22),
 
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text(
-                "Overall Progress",
+                'Completion Progress',
                 style: TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.bold,
                 ),
               ),
               Text(
-                "${(progress * 100).toInt()}%",
+                '${(progress * 100).toInt()}%',
                 style: const TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.bold,
-                  fontSize: 18,
                 ),
               ),
             ],
@@ -840,7 +959,7 @@ class _TodoViewState extends State<TodoView>
               builder: (context, value, child) {
                 return LinearProgressIndicator(
                   value: value,
-                  minHeight: 12,
+                  minHeight: 11,
                   backgroundColor: Colors.white30,
                   valueColor: const AlwaysStoppedAnimation(Colors.greenAccent),
                 );
@@ -851,19 +970,22 @@ class _TodoViewState extends State<TodoView>
           const SizedBox(height: 9),
 
           Text(
-            "$completedTasks out of $totalTasks tasks completed",
+            '$completed of $total tasks completed',
             style: const TextStyle(color: Colors.white70, fontSize: 12),
           ),
 
-          const SizedBox(height: 12),
+          const Divider(color: Colors.white30, height: 25),
 
           Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Icon(Icons.favorite, color: Colors.pinkAccent, size: 17),
-              const SizedBox(width: 6),
+              const Text(
+                'Subtask Progress',
+                style: TextStyle(color: Colors.white),
+              ),
               Text(
-                "$favoriteTasks Favorite Tasks",
-                style: const TextStyle(color: Colors.white, fontSize: 12),
+                '$subtaskCompleted / $subtaskTotal',
+                style: const TextStyle(color: Colors.white),
               ),
             ],
           ),
@@ -872,42 +994,33 @@ class _TodoViewState extends State<TodoView>
     );
   }
 
-  // STATISTICS CARD
+  // ================= STAT CARD =================
 
-  Widget buildStatCard(String title, int value, IconData icon, double width) {
+  Widget statCard(String title, int value, IconData icon) {
     return SizedBox(
-      width: width,
+      width: 105,
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 8),
+        padding: const EdgeInsets.all(11),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.17),
-          borderRadius: BorderRadius.circular(15),
-          border: Border.all(color: Colors.white.withOpacity(0.15)),
+          color: Colors.white.withOpacity(0.16),
+          borderRadius: BorderRadius.circular(14),
         ),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(icon, color: Colors.white, size: 24),
-            const SizedBox(width: 9),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    "$value",
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: Colors.white70, fontSize: 11),
-                  ),
-                ],
+            Icon(icon, color: Colors.white, size: 20),
+            const SizedBox(height: 6),
+            Text(
+              '$value',
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 21,
               ),
+            ),
+            Text(
+              title,
+              style: const TextStyle(color: Colors.white70, fontSize: 11),
             ),
           ],
         ),
@@ -915,15 +1028,15 @@ class _TodoViewState extends State<TodoView>
     );
   }
 
-  // ADD TASK SECTION
+  // ================= ADD TASK FORM =================
 
-  Widget buildAddTaskSection(bool isSmall) {
+  Widget addTaskSection() {
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: isSmall ? 12 : 16),
+      padding: const EdgeInsets.symmetric(horizontal: 15),
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: cardColor,
+          color: card,
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
@@ -936,138 +1049,113 @@ class _TodoViewState extends State<TodoView>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Icon(Icons.add_task, color: primaryColor),
-                const SizedBox(width: 9),
-                Text(
-                  "Create New Task",
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: textColor,
-                  ),
-                ),
-              ],
+            Text(
+              'Create New Task',
+              style: TextStyle(
+                color: text,
+                fontSize: 19,
+                fontWeight: FontWeight.bold,
+              ),
             ),
 
-            const SizedBox(height: 16),
+            const SizedBox(height: 15),
 
             TextField(
-              controller: controller,
+              controller: titleController,
               onSubmitted: (_) => addTask(),
-              style: TextStyle(color: textColor),
-              decoration: InputDecoration(
-                hintText: "Enter your task...",
-                prefixIcon: const Icon(Icons.edit_note),
-                filled: true,
-                fillColor: backgroundColor,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(13),
-                  borderSide: BorderSide.none,
-                ),
+              style: TextStyle(color: text),
+              decoration: const InputDecoration(
+                hintText: 'Task title...',
+                prefixIcon: Icon(Icons.edit_note),
+                border: OutlineInputBorder(),
               ),
             ),
 
-            const SizedBox(height: 11),
+            const SizedBox(height: 12),
 
             TextField(
-              controller: notesController,
+              controller: descriptionController,
               maxLines: 2,
-              style: TextStyle(color: textColor),
-              decoration: InputDecoration(
-                hintText: "Description (optional)...",
-                prefixIcon: const Icon(Icons.notes),
-                filled: true,
-                fillColor: backgroundColor,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(13),
-                  borderSide: BorderSide.none,
-                ),
+              style: TextStyle(color: text),
+              decoration: const InputDecoration(
+                hintText: 'Task description...',
+                prefixIcon: Icon(Icons.notes),
+                border: OutlineInputBorder(),
               ),
             ),
 
-            const SizedBox(height: 13),
+            const SizedBox(height: 12),
 
             LayoutBuilder(
               builder: (context, constraints) {
-                final stacked = constraints.maxWidth < 450;
+                final isSmall = constraints.maxWidth < 420;
 
-                final priorityField = buildDropdown(
-                  "Priority",
-                  selectedPriority,
+                Widget priorityDropdown = dropdown(
+                  'Priority',
+                  priority,
                   priorities,
                   (value) {
-                    setState(() {
-                      selectedPriority = value!;
-                    });
+                    setState(() => priority = value!);
                   },
                 );
 
-                final categoryField = buildDropdown(
-                  "Category",
-                  selectedCategory,
+                Widget categoryDropdown = dropdown(
+                  'Category',
+                  category,
                   categories,
                   (value) {
-                    setState(() {
-                      selectedCategory = value!;
-                    });
+                    setState(() => category = value!);
                   },
                 );
 
-                if (stacked) {
+                if (isSmall) {
                   return Column(
                     children: [
-                      priorityField,
+                      priorityDropdown,
                       const SizedBox(height: 10),
-                      categoryField,
+                      categoryDropdown,
                     ],
                   );
                 }
 
                 return Row(
                   children: [
-                    Expanded(child: priorityField),
+                    Expanded(child: priorityDropdown),
                     const SizedBox(width: 10),
-                    Expanded(child: categoryField),
+                    Expanded(child: categoryDropdown),
                   ],
                 );
               },
             ),
 
-            const SizedBox(height: 13),
+            const SizedBox(height: 12),
 
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () async {
-                  final date = await pickDate(selectedDueDate);
+            OutlinedButton.icon(
+              onPressed: () async {
+                final date = await chooseDate(dueDate);
 
-                  if (date != null) {
-                    setState(() {
-                      selectedDueDate = date;
-                    });
-                  }
-                },
-                icon: const Icon(Icons.calendar_month),
-                label: Text("Due Date: ${formatDate(selectedDueDate)}"),
-              ),
+                if (date != null) {
+                  setState(() => dueDate = date);
+                }
+              },
+              icon: const Icon(Icons.calendar_month),
+              label: Text('Due: ${formatDate(dueDate)}'),
             ),
 
-            const SizedBox(height: 13),
+            const SizedBox(height: 12),
 
             SizedBox(
               width: double.infinity,
-              height: 50,
+              height: 49,
               child: ElevatedButton.icon(
                 onPressed: addTask,
                 icon: const Icon(Icons.add),
                 label: const Text(
-                  "Add New Task",
+                  'Create Task',
                   style: TextStyle(fontWeight: FontWeight.bold),
                 ),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: primaryColor,
+                  backgroundColor: primary,
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(13),
@@ -1081,65 +1169,84 @@ class _TodoViewState extends State<TodoView>
     );
   }
 
-  // DROPDOWN
+  // ================= DROPDOWN =================
 
-  Widget buildDropdown(
+  Widget dropdown(
     String label,
-    String selectedValue,
+    String value,
     List<String> items,
     ValueChanged<String?> onChanged,
   ) {
     return DropdownButtonFormField<String>(
-      value: selectedValue,
+      value: value,
       isExpanded: true,
-      dropdownColor: cardColor,
-      style: TextStyle(color: textColor),
+      dropdownColor: card,
+      style: TextStyle(color: text),
       decoration: InputDecoration(
         labelText: label,
         filled: true,
-        fillColor: backgroundColor,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 12,
-          vertical: 12,
-        ),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
-        ),
+        fillColor: background,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
       ),
-      items: items.map((value) {
-        return DropdownMenuItem(value: value, child: Text(value));
+      items: items.map((item) {
+        return DropdownMenuItem(value: item, child: Text(item));
       }).toList(),
       onChanged: onChanged,
     );
   }
 
-  // SEARCH
+  // ================= ARCHIVE HEADER =================
 
-  Widget buildSearch(bool isSmall) {
+  Widget archiveHeader() {
+    return Container(
+      padding: const EdgeInsets.all(22),
+      color: primary,
+      child: const Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.archive, color: Colors.white, size: 35),
+          SizedBox(height: 10),
+          Text(
+            'Archived Tasks',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 25,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          Text(
+            'Manage your previously archived tasks.',
+            style: TextStyle(color: Colors.white70),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ================= SEARCH =================
+
+  Widget searchSection() {
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: isSmall ? 12 : 16),
+      padding: const EdgeInsets.symmetric(horizontal: 15),
       child: TextField(
         controller: searchController,
         onChanged: (_) => setState(() {}),
-        style: TextStyle(color: textColor),
+        style: TextStyle(color: text),
         decoration: InputDecoration(
-          hintText: "Search tasks or descriptions...",
+          hintText: 'Search title, description, category...',
           prefixIcon: const Icon(Icons.search),
           suffixIcon: searchController.text.isNotEmpty
               ? IconButton(
                   onPressed: () {
-                    setState(() {
-                      searchController.clear();
-                    });
+                    setState(() => searchController.clear());
                   },
                   icon: const Icon(Icons.close),
                 )
               : null,
           filled: true,
-          fillColor: cardColor,
+          fillColor: card,
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(15),
+            borderRadius: BorderRadius.circular(14),
             borderSide: BorderSide.none,
           ),
         ),
@@ -1147,130 +1254,72 @@ class _TodoViewState extends State<TodoView>
     );
   }
 
-  // FILTERS
+  // ================= FILTER =================
 
-  Widget buildFilters(bool isSmall) {
+  Widget filterSection() {
     return SizedBox(
-      height: 45,
-      child: ListView.separated(
-        padding: EdgeInsets.symmetric(horizontal: isSmall ? 12 : 16),
+      height: 43,
+      child: ListView(
+        padding: const EdgeInsets.symmetric(horizontal: 14),
         scrollDirection: Axis.horizontal,
-        itemCount: filters.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
-        itemBuilder: (context, index) {
-          final filter = filters[index];
-          final selected = selectedFilter == filter;
+        children: filters.map((value) {
+          final active = filter == value;
 
-          return InkWell(
-            borderRadius: BorderRadius.circular(12),
-            onTap: () {
-              setState(() {
-                selectedFilter = filter;
-              });
-            },
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 250),
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-              decoration: BoxDecoration(
-                color: selected ? primaryColor : cardColor,
-                borderRadius: BorderRadius.circular(12),
+          return Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: ChoiceChip(
+              label: Text(value),
+              selected: active,
+              onSelected: (_) {
+                setState(() => filter = value);
+              },
+              selectedColor: primary,
+              backgroundColor: card,
+              labelStyle: TextStyle(
+                color: active ? Colors.white : text,
+                fontWeight: FontWeight.bold,
               ),
-              child: Center(
-                child: Text(
-                  filter,
-                  style: TextStyle(
-                    color: selected ? Colors.white : textColor,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12,
-                  ),
-                ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
               ),
             ),
           );
-        },
-      ),
-    );
-  }
-
-  // CATEGORY FILTER
-
-  Widget buildCategoryFilter(bool isSmall) {
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: isSmall ? 12 : 16),
-      child: DropdownButtonFormField<String>(
-        value: selectedCategoryFilter,
-        isExpanded: true,
-        dropdownColor: cardColor,
-        style: TextStyle(color: textColor),
-        decoration: InputDecoration(
-          labelText: "Filter by Category",
-          prefixIcon: const Icon(Icons.category_outlined),
-          filled: true,
-          fillColor: cardColor,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(13),
-            borderSide: BorderSide.none,
-          ),
-        ),
-        items: ["All", ...categories].map((category) {
-          return DropdownMenuItem(value: category, child: Text(category));
         }).toList(),
-        onChanged: (value) {
-          if (value != null) {
-            setState(() {
-              selectedCategoryFilter = value;
-            });
-          }
-        },
       ),
     );
   }
 
-  // TASK HEADING
+  // ================= TASK HEADING =================
 
-  Widget buildTaskHeading(bool isSmall) {
+  Widget headingSection() {
     return Padding(
-      padding: EdgeInsets.symmetric(
-        horizontal: isSmall ? 14 : 18,
-        vertical: 10,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
       child: Row(
         children: [
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  showFavoritesOnly ? "Favorite Tasks" : "My Tasks",
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: textColor,
-                  ),
-                ),
-                Text(
-                  "${filteredTasks.length} tasks found",
-                  style: TextStyle(fontSize: 11, color: secondaryTextColor),
-                ),
-              ],
+            child: Text(
+              '${archiveMode ? "Archived" : "My Tasks"} '
+              '(${filteredTasks.length})',
+              style: TextStyle(
+                color: text,
+                fontSize: 19,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ),
           DropdownButton<String>(
-            value: selectedSort,
+            value: sort,
+            dropdownColor: card,
             underline: const SizedBox(),
-            icon: Icon(Icons.sort, color: textColor),
-            dropdownColor: cardColor,
-            style: TextStyle(color: textColor, fontSize: 12),
-            items: ["Newest", "Oldest", "Priority", "A-Z", "Due Date"].map((
+            style: TextStyle(color: text, fontSize: 12),
+            items: ['Newest', 'Oldest', 'Priority', 'A-Z', 'Due Date'].map((
               value,
             ) {
               return DropdownMenuItem(value: value, child: Text(value));
             }).toList(),
             onChanged: (value) {
               if (value != null) {
-                setState(() {
-                  selectedSort = value;
-                });
+                setState(() => sort = value);
               }
             },
           ),
@@ -1279,86 +1328,115 @@ class _TodoViewState extends State<TodoView>
     );
   }
 
-  // TASK LIST
+  // ================= TASK LIST =================
 
-  Widget buildTaskList(bool isSmall) {
+  Widget taskList() {
     final result = filteredTasks;
 
     if (result.isEmpty) {
-      return SizedBox(height: 270, child: buildEmptyState());
+      return SizedBox(
+        height: 270,
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.inbox_outlined, size: 70, color: Colors.grey.shade400),
+              const SizedBox(height: 12),
+              Text(
+                'No Tasks Found',
+                style: TextStyle(
+                  color: text,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              Text(
+                'Add a task or change your filters.',
+                style: TextStyle(color: muted),
+              ),
+            ],
+          ),
+        ),
+      );
     }
 
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: isSmall ? 10 : 16),
-      child: isGridView
-          ? LayoutBuilder(
-              builder: (context, constraints) {
-                final columns = constraints.maxWidth > 650 ? 2 : 1;
+    if (gridMode) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final columns = constraints.maxWidth > 650 ? 2 : 1;
 
-                return GridView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: result.length,
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: columns,
-                    crossAxisSpacing: 10,
-                    mainAxisSpacing: 5,
-                    mainAxisExtent: 205,
-                  ),
-                  itemBuilder: (context, index) {
-                    final task = result[index];
-
-                    return buildTaskCard(task);
-                  },
-                );
-              },
-            )
-          : ListView.builder(
+            return GridView.builder(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               itemCount: result.length,
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: columns,
+                crossAxisSpacing: 10,
+                mainAxisSpacing: 8,
+                mainAxisExtent: 260,
+              ),
               itemBuilder: (context, index) {
-                final task = result[index];
-
-                return Dismissible(
-                  key: ValueKey(task.id),
-                  direction: DismissDirection.endToStart,
-                  background: Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    padding: const EdgeInsets.only(right: 20),
-                    alignment: Alignment.centerRight,
-                    decoration: BoxDecoration(
-                      color: Colors.red,
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                    child: const Icon(
-                      Icons.delete,
-                      color: Colors.white,
-                      size: 30,
-                    ),
-                  ),
-                  onDismissed: (_) {
-                    deleteTask(task);
-                  },
-                  child: buildTaskCard(task),
-                );
+                return taskCard(result[index]);
               },
+            );
+          },
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: ListView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        itemCount: result.length,
+        itemBuilder: (context, index) {
+          final task = result[index];
+
+          return Dismissible(
+            key: ValueKey(task.id),
+            direction: archiveMode
+                ? DismissDirection.none
+                : DismissDirection.endToStart,
+            background: Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.only(right: 20),
+              alignment: Alignment.centerRight,
+              decoration: BoxDecoration(
+                color: Colors.red,
+                borderRadius: BorderRadius.circular(17),
+              ),
+              child: const Icon(Icons.delete, color: Colors.white, size: 28),
             ),
+            onDismissed: (_) => deleteTask(task),
+            child: taskCard(task),
+          );
+        },
+      ),
     );
   }
 
-  // TASK CARD
+  // ================= TASK CARD =================
 
-  Widget buildTaskCard(TodoTask task) {
-    final completed = task.isCompleted;
-    final overdue = !completed && isOverdue(task.dueDate);
-    final priorityColor = getPriorityColor(task.priority);
+  Widget taskCard(TodoTask task) {
+    final selected = selectedIds.contains(task.id);
+
+    final subTotal = task.subtasks.length;
+
+    final subDone = task.subtasks.where((s) => s['done'] == true).length;
+
+    final subProgress = subTotal == 0 ? 0.0 : subDone / subTotal;
 
     return Card(
+      color: selected ? primary.withOpacity(0.10) : card,
       elevation: 2,
-      color: cardColor,
       margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(17),
+        side: BorderSide(color: selected ? primary : Colors.transparent),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(13),
         child: Column(
@@ -1366,164 +1444,199 @@ class _TodoViewState extends State<TodoView>
           children: [
             Row(
               children: [
-                Checkbox(
-                  value: completed,
-                  activeColor: Colors.green,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(5),
+                if (selectionMode)
+                  Checkbox(value: selected, onChanged: (_) => selectTask(task))
+                else
+                  Checkbox(
+                    value: task.completed,
+                    activeColor: Colors.green,
+                    onChanged: (_) => toggleTask(task),
                   ),
-                  onChanged: (value) {
-                    toggleTask(task, value ?? false);
-                  },
-                ),
 
                 Expanded(
-                  child: Text(
-                    task.title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
-                      color: completed ? Colors.grey : textColor,
-                      decoration: completed
-                          ? TextDecoration.lineThrough
-                          : TextDecoration.none,
+                  child: GestureDetector(
+                    onLongPress: () => selectTask(task),
+                    child: Text(
+                      task.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: task.completed ? Colors.grey : text,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                        decoration: task.completed
+                            ? TextDecoration.lineThrough
+                            : null,
+                      ),
                     ),
                   ),
                 ),
 
                 IconButton(
-                  tooltip: "Favorite",
                   onPressed: () => toggleFavorite(task),
                   icon: Icon(
-                    task.isFavorite ? Icons.favorite : Icons.favorite_border,
-                    color: task.isFavorite ? Colors.pink : secondaryTextColor,
+                    task.favorite ? Icons.favorite : Icons.favorite_border,
+                    color: task.favorite ? Colors.pink : muted,
                   ),
                 ),
 
                 PopupMenuButton<String>(
-                  icon: Icon(Icons.more_vert, color: textColor),
                   onSelected: (value) {
-                    switch (value) {
-                      case "edit":
-                        editTask(task);
-                        break;
-                      case "delete":
-                        deleteTask(task);
-                        break;
-                      case "duplicate":
-                        duplicateTask(task);
-                        break;
-                      case "complete":
-                        toggleTask(task, !completed);
-                        break;
-                    }
+                    if (value == 'edit') editTask(task);
+                    if (value == 'delete') deleteTask(task);
+                    if (value == 'duplicate') duplicateTask(task);
+                    if (value == 'subtask') addSubtask(task);
+                    if (value == 'archive') archiveTask(task);
+                    if (value == 'select') selectTask(task);
                   },
                   itemBuilder: (context) => [
                     const PopupMenuItem(
-                      value: "edit",
-                      child: Row(
-                        children: [
-                          Icon(Icons.edit, color: Colors.blue),
-                          SizedBox(width: 10),
-                          Text("Edit"),
-                        ],
-                      ),
+                      value: 'edit',
+                      child: Text('Edit Task'),
                     ),
                     const PopupMenuItem(
-                      value: "duplicate",
-                      child: Row(
-                        children: [
-                          Icon(Icons.copy, color: Colors.purple),
-                          SizedBox(width: 10),
-                          Text("Duplicate"),
-                        ],
-                      ),
+                      value: 'subtask',
+                      child: Text('Add Subtask'),
+                    ),
+                    const PopupMenuItem(
+                      value: 'duplicate',
+                      child: Text('Duplicate'),
                     ),
                     PopupMenuItem(
-                      value: "complete",
-                      child: Row(
-                        children: [
-                          Icon(
-                            completed ? Icons.refresh : Icons.check_circle,
-                            color: Colors.green,
-                          ),
-                          const SizedBox(width: 10),
-                          Text(completed ? "Reopen" : "Complete"),
-                        ],
-                      ),
+                      value: 'archive',
+                      child: Text(task.archived ? 'Restore' : 'Archive'),
                     ),
                     const PopupMenuItem(
-                      value: "delete",
-                      child: Row(
-                        children: [
-                          Icon(Icons.delete, color: Colors.red),
-                          SizedBox(width: 10),
-                          Text("Delete"),
-                        ],
-                      ),
+                      value: 'select',
+                      child: Text('Select Task'),
                     ),
+                    const PopupMenuItem(value: 'delete', child: Text('Delete')),
                   ],
                 ),
               ],
             ),
 
-            if (task.notes.isNotEmpty) ...[
+            if (task.description.isNotEmpty)
               Padding(
-                padding: const EdgeInsets.only(left: 12),
+                padding: const EdgeInsets.only(left: 48),
                 child: Text(
-                  task.notes,
+                  task.description,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: secondaryTextColor, fontSize: 12),
+                  style: TextStyle(color: muted, fontSize: 12),
                 ),
               ),
-            ],
 
-            const SizedBox(height: 11),
+            const SizedBox(height: 12),
 
             Wrap(
               spacing: 7,
               runSpacing: 7,
               children: [
-                buildTag(
-                  task.category,
-                  Colors.blue,
-                  getCategoryIcon(task.category),
-                ),
-                buildTag(
-                  "${task.priority} Priority",
-                  priorityColor,
-                  Icons.flag_outlined,
-                ),
-                buildTag(
-                  getDueLabel(task.dueDate),
-                  overdue ? Colors.red : Colors.purple,
-                  Icons.calendar_today,
+                tag(task.category, Colors.blue),
+                tag('${task.priority} Priority', priorityColor(task.priority)),
+                tag(
+                  dueLabel(task.dueDate),
+                  isOverdue(task.dueDate) && !task.completed
+                      ? Colors.red
+                      : Colors.purple,
                 ),
               ],
             ),
 
-            const SizedBox(height: 11),
+            if (subTotal > 0) ...[
+              const SizedBox(height: 12),
+
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Subtasks',
+                    style: TextStyle(
+                      color: text,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                  ),
+                  Text(
+                    '$subDone / $subTotal',
+                    style: TextStyle(color: muted, fontSize: 11),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 6),
+
+              LinearProgressIndicator(
+                value: subProgress,
+                backgroundColor: background,
+                color: Colors.green,
+                minHeight: 6,
+                borderRadius: BorderRadius.circular(10),
+              ),
+
+              const SizedBox(height: 6),
+
+              ...List.generate(task.subtasks.length, (index) {
+                final subtask = task.subtasks[index];
+
+                return Row(
+                  children: [
+                    SizedBox(
+                      height: 32,
+                      width: 32,
+                      child: Checkbox(
+                        value: subtask['done'] == true,
+                        onChanged: (value) {
+                          toggleSubtask(task, index, value ?? false);
+                        },
+                      ),
+                    ),
+                    Expanded(
+                      child: Text(
+                        subtask['title'],
+                        style: TextStyle(
+                          color: muted,
+                          fontSize: 12,
+                          decoration: subtask['done'] == true
+                              ? TextDecoration.lineThrough
+                              : null,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () => deleteSubtask(task, index),
+                      icon: const Icon(
+                        Icons.close,
+                        size: 17,
+                        color: Colors.red,
+                      ),
+                    ),
+                  ],
+                );
+              }),
+            ],
+
+            const SizedBox(height: 10),
 
             Row(
               children: [
-                Icon(Icons.access_time, size: 13, color: secondaryTextColor),
+                Icon(Icons.calendar_today, size: 12, color: muted),
                 const SizedBox(width: 5),
                 Expanded(
                   child: Text(
-                    "Created: ${formatDate(task.createdAt)}",
-                    style: TextStyle(color: secondaryTextColor, fontSize: 10),
+                    'Created ${formatDate(task.createdAt)}',
+                    style: TextStyle(color: muted, fontSize: 10),
                   ),
                 ),
-                if (completed)
+                if (task.completed)
                   const Text(
-                    "✓ Completed",
+                    'COMPLETED',
                     style: TextStyle(
                       color: Colors.green,
-                      fontSize: 11,
                       fontWeight: FontWeight.bold,
+                      fontSize: 10,
                     ),
                   ),
               ],
@@ -1534,75 +1647,34 @@ class _TodoViewState extends State<TodoView>
     );
   }
 
-  // TAG WIDGET
+  // ================= TAG =================
 
-  Widget buildTag(String title, Color color, IconData icon) {
+  Widget tag(String title, Color color) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
       decoration: BoxDecoration(
         color: color.withOpacity(0.12),
         borderRadius: BorderRadius.circular(20),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 11, color: color),
-          const SizedBox(width: 4),
-          Text(
-            title,
-            style: TextStyle(
-              color: color,
-              fontSize: 10,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ],
+      child: Text(
+        title,
+        style: TextStyle(
+          color: color,
+          fontSize: 10,
+          fontWeight: FontWeight.bold,
+        ),
       ),
     );
   }
 
-  // EMPTY STATE
+  // ================= DISPOSE =================
 
-  Widget buildEmptyState() {
-    final bool noTasks = tasks.isEmpty;
-
-    final String message = noTasks
-        ? "Add a new task to get started!"
-        : "Try another search or filter.";
-
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            noTasks ? Icons.task_alt : Icons.search_off,
-            size: 75,
-            color: Colors.grey.shade400,
-          ),
-          const SizedBox(height: 12),
-          Text(
-            noTasks ? "No Tasks Available" : "No Matching Tasks",
-            style: TextStyle(
-              fontSize: 19,
-              fontWeight: FontWeight.bold,
-              color: textColor,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(message, style: TextStyle(color: secondaryTextColor)),
-          if (showFavoritesOnly && favoriteTasks == 0) ...[
-            const SizedBox(height: 12),
-            TextButton(
-              onPressed: () {
-                setState(() {
-                  showFavoritesOnly = false;
-                });
-              },
-              child: const Text("Show All Tasks"),
-            ),
-          ],
-        ],
-      ),
-    );
+  @override
+  void dispose() {
+    titleController.dispose();
+    descriptionController.dispose();
+    searchController.dispose();
+    subtaskController.dispose();
+    super.dispose();
   }
 }
